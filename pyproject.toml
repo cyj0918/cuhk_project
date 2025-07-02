@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cuhk_project"
+version = "0.1.0"
+description = "A project of CUHK summer internship."
+readme = "README.rst"
+authors = [
+  {name = "Yu Jhen CHEN", email = "joonie.jhen@gmail.com"}
+]
+maintainers = [
+  {name = "Yu Jhen CHEN", email = "joonie.jhen@gmail.com"}
+]
+classifiers = [
+
+]
+license = {text = "MIT license"}
+dependencies = [
+  "typer"
+]
+
+[project.optional-dependencies]
+dev = [
+    "coverage",  # testing
+    "mypy",  # linting
+    "pytest",  # testing
+    "ruff"  # linting
+]
+
+[project.urls]
+
+bugs = "https://github.com/cyj0918/cuhk_project/issues"
+changelog = "https://github.com/cyj0918/cuhk_project/blob/master/changelog.md"
+homepage = "https://github.com/cyj0918/cuhk_project"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+"*" = ["*.*"]
+
+
+
+
+# Mypy
+# ----
+
+[tool.mypy]
+files = "."
+
+# Use strict defaults
+strict = true
+warn_unreachable = true
+warn_no_return = true
+
+[[tool.mypy.overrides]]
+# Don't require test functions to include types
+module = "tests.*"
+allow_untyped_defs = true
+disable_error_code = "attr-defined"
+
