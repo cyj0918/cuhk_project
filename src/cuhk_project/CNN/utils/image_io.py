@@ -3,7 +3,7 @@ import numpy as np
 from PIL import Image, UnidentifiedImageError
 from pathlib import Path
 from typing import Optional, Tuple, Union
-from ...__init__ import logger 
+from ... import logger 
 
 def load_image(
         image_path: Union[str, Path],
