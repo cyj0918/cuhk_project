@@ -16,8 +16,8 @@ def test_conv_processing():
     processor = Conv(config)
 
     # 2. Load testing image
-    input_path = "test_data/input.jpg"  # Route to testing image
-    output_dir = Path("test_output") # Route to output image
+    input_path = "tests/test_data/input.jpg"  # Route to testing image
+    output_dir = Path("tests/test_output") # Route to output image
     output_dir.mkdir(exist_ok=True)
     
     image_tensor = load_image(input_path)
