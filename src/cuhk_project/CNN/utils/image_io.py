@@ -112,7 +112,7 @@ def save_as_image(
     format: str = "JPEG",
     quality: int = 95,
     denormalize: bool = True,
-    apply_colormap: bool = False
+    apply_colormap: bool = True
 ) -> None:
     """Save tensor to standard image format (JPEG or PNG)
 
@@ -122,6 +122,7 @@ def save_as_image(
         format: Image format (JPEG/PNG/BMP/TIFF)
         quality: Save quality (1-100)
         denormalize: Denormalize or not (0-255)
+        apply_colormap: Colormap or not
     
     Raises:
         ValueError: Input tensor or value error
