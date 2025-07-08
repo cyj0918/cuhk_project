@@ -8,14 +8,14 @@ from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-def test_conv_processing(input_path: str, kernel_size: int, out_channels: int):
+def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, stride: int):
     """Testing of completed Conv processing with dynamic parameters"""
     # Dynamic configuration
     config = {
         'in_channels': 3,  # Fixed for RGB images
         'out_channels': out_channels,
         'kernel_size': kernel_size,
-        'stride': 1,
+        'stride': stride,
         'padding': (kernel_size - 1) // 2  # Auto-calculate padding
     }
     print(f"Using config: {config}")
@@ -49,10 +49,14 @@ if __name__ == "__main__":
     parser.add_argument("--out_channels", type=int,
                        default=16,
                        help="Number of output channels")
+    parser.add_argument("--stride", type=int,
+                       default=1,
+                       help="Convolution stride value (1,2,3...)")
     args = parser.parse_args()
     
     test_conv_processing(
         input_path=args.input,
         kernel_size=args.kernel_size,
-        out_channels=args.out_channels
+        out_channels=args.out_channels,
+        stride=args.stride
     )
