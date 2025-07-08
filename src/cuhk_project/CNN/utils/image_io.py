@@ -152,7 +152,7 @@ def save_as_image(
             tensor = tensor.clamp(0, 255)
     
         # Turn into PIL image
-        array = tensor.float().cpu().numpy()
+        array = tensor.float().detach().cpu().numpy()
 
         # Single channel
         if array.shape[0] == 1:
