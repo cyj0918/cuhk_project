@@ -111,7 +111,8 @@ def save_as_image(
     output_path: Union[str, Path],
     format: str = "JPEG",
     quality: int = 95,
-    denormalize: bool = True
+    denormalize: bool = True,
+    apply_colormap: bool = False
 ) -> None:
     """Save tensor to standard image format (JPEG or PNG)
 
@@ -140,17 +141,42 @@ def save_as_image(
             tensor = tensor.squeeze(0)
 
         # Denormalize
+        tensor = tensor.float()
         if denormalize:
-            if tensor.min() >= 0 and tensor.max() <= 1:
-                tensor = tensor * 255
+            if tensor.numel() > 0:  # Check not zero
+                min_val, max_val = tensor.min(), tensor.max()
+                if min_val != max_val:  # Avoid divided by zero
+                    tensor = (tensor - min_val) / (max_val - min_val) * 255
+                else:
+                    tensor = tensor * 0 + 128  # Grayscale
             tensor = tensor.clamp(0, 255)
-
+    
         # Turn into PIL image
-        array = tensor.byte().cpu().numpy()
-        if array.shape[0] == 1:  # 单通道转灰度
-            image = Image.fromarray(array.squeeze(0), mode='L')
-        elif array.shape[0] == 3:  # RGB
-            image = Image.fromarray(array.transpose(1, 2, 0), mode='RGB')
+        array = tensor.float().cpu().numpy()
+
+        # Single channel
+        if array.shape[0] == 1:
+            # Normalized to 0-1
+            if array.max() > array.min():  # Avoid divided by zero
+                array = (array - array.min()) / (array.max() - array.min())
+            else:  # If range of numbers are too small
+                array = (array - array.mean()) / (array.std() + 1e-6) * 0.2 + 0.5
+            
+            # Colormap
+            if apply_colormap:
+                import matplotlib.pyplot as plt
+                cmap = plt.get_cmap('viridis')
+                array = (cmap(array.squeeze(0))[..., :3] * 255).astype('uint8')  # RGB
+                array = array.transpose(2, 0, 1)  # HWC -> CHW
+                image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
+            else:
+                array = (array * 255).astype('uint8')
+                image = Image.fromarray(array.squeeze(0), 'L')
+
+        # RGB graph
+        elif array.shape[0] == 3:
+            array = np.clip(array, 0, 255).astype('uint8')
+            image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
         else:
             raise ValueError(f"Unsupported channel size: {array.shape[0]}")
         
