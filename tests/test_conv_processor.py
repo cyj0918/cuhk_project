@@ -1,49 +1,58 @@
+# python -m tests.test_conv_processor --input tests/test_data/input1.jpg
+
 import sys
 import torch
+import argparse
 from pathlib import Path
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-def test_conv_processing(input_path: str="tests/test_data/input.jpg"):
-    """Testing of completed Conv processing"""
-    # 1. Configuration of Conv processor
+def test_conv_processing(input_path: str, kernel_size: int, out_channels: int):
+    """Testing of completed Conv processing with dynamic parameters"""
+    # Dynamic configuration
     config = {
-        'in_channels': 3,
-        'out_channels': 16,
-        'kernel_size': 3,
+        'in_channels': 3,  # Fixed for RGB images
+        'out_channels': out_channels,
+        'kernel_size': kernel_size,
         'stride': 1,
-        'padding': 1
+        'padding': (kernel_size - 1) // 2  # Auto-calculate padding
     }
+    print(f"Using config: {config}")
+    
     processor = Conv(config)
-
-    # Use passed input_path
     output_dir = Path("tests/test_output")
     output_dir.mkdir(exist_ok=True)
-    image_tensor = load_image(input_path)  # use argument path
-    print(f"Loaded image from: {input_path}")
-
-    # Process the image
+    
+    # Load and process image
+    image_tensor = load_image(input_path)
     output_tensor = processor.process(image_tensor)
-    print(f"Output tensor shape: {output_tensor.shape}")
-
-    # Save results
-    # Save tensor results
-    processor.save_result(output_tensor, output_dir/"conv_output.pt")
-    # Visulize the feature image
+    
+    # Save results with parameter info in filename
+    param_str = f"k{kernel_size}_c{out_channels}"
+    processor.save_result(output_tensor, output_dir/f"conv_output_{param_str}.pt")
     save_as_image(
-        output_tensor[:, 0:1],  # Take the first feature image
-        output_dir/"conv_feature.jpg",
+        output_tensor[:, 0:1],
+        output_dir/f"conv_feature_{param_str}.jpg",
         denormalize=True
     )
-    print(f"Results saved to {output_dir}")
+    print(f"Results saved with prefix: {param_str}")
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='Test CNN convolution with dynamic parameters')
     parser.add_argument("--input", type=str, 
                        default="tests/test_data/input.jpg",
                        help="Path to input image")
+    parser.add_argument("--kernel_size", type=int,
+                       default=3,
+                       help="Size of convolution kernel (3,5,7...)")
+    parser.add_argument("--out_channels", type=int,
+                       default=16,
+                       help="Number of output channels")
     args = parser.parse_args()
     
-    test_conv_processing(input_path=args.input)
+    test_conv_processing(
+        input_path=args.input,
+        kernel_size=args.kernel_size,
+        out_channels=args.out_channels
+    )
