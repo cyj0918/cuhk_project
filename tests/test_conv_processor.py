@@ -5,7 +5,7 @@ from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-def test_conv_processing():
+def test_conv_processing(input_path: str="tests/test_data/input.jpg"):
     """Testing of completed Conv processing"""
     # 1. Configuration of Conv processor
     config = {
@@ -17,22 +17,19 @@ def test_conv_processing():
     }
     processor = Conv(config)
 
-    # 2. Load testing image
-    input_path = "tests/test_data/input.jpg"  # Route to testing image
-    output_dir = Path("tests/test_output") # Route to output image
+    # Use passed input_path
+    output_dir = Path("tests/test_output")
     output_dir.mkdir(exist_ok=True)
-    
-    image_tensor = load_image(input_path)
-    print(f"Loaded image shape: {image_tensor.shape}")
+    image_tensor = load_image(input_path)  # use argument path
+    print(f"Loaded image from: {input_path}")
 
-    # 3. Process the image
+    # Process the image
     output_tensor = processor.process(image_tensor)
     print(f"Output tensor shape: {output_tensor.shape}")
 
-    # 4. Save results
+    # Save results
     # Save tensor results
     processor.save_result(output_tensor, output_dir/"conv_output.pt")
-    
     # Visulize the feature image
     save_as_image(
         output_tensor[:, 0:1],  # Take the first feature image
@@ -42,4 +39,11 @@ def test_conv_processing():
     print(f"Results saved to {output_dir}")
 
 if __name__ == "__main__":
-    test_conv_processing()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", type=str, 
+                       default="tests/test_data/input.jpg",
+                       help="Path to input image")
+    args = parser.parse_args()
+    
+    test_conv_processing(input_path=args.input)
