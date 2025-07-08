@@ -1,7 +1,9 @@
+import sys
 import torch
 from pathlib import Path
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_conv_processing():
     """Testing of completed Conv processing"""

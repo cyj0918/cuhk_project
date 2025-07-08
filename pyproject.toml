@@ -36,10 +36,12 @@ changelog = "https://github.com/cyj0918/cuhk_project/blob/master/changelog.md"
 homepage = "https://github.com/cyj0918/cuhk_project"
 
 [tool.setuptools]
+packages = ["cuhk_project", "cuhk_project.CNN", "cuhk_project.CNN.processors", "cuhk_project.CNN.utils"]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.package-data]
-"*" = ["*.*"]
+"*" = ["*.py", "*.rst", "*.txt"]
 
 
 
