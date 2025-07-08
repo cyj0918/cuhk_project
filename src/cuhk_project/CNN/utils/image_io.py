@@ -67,3 +67,41 @@ def load_image(
     except Exception as e:
         logger.exception(f"Unexpected error loading image: {image_path}")
         raise RuntimeError(f"Failed to load image: {image_path}") from e
+    
+def save_tensor(
+        tensor: torch.Tensor,
+        output_path: Union[str, Path],
+        format: str = "pt"
+) -> None:
+    """Save tensor to files
+
+    Args:
+        tensor: The PyTorch tensor that is going to be saved
+        output_path: The output path of files
+        format: ("pt" | "npy")
+
+    Raises:
+        ValueError: When input is not a tensor or format is wrong
+        IOError: When the file is saved wrong 
+    """
+    try:
+        if not isinstance(tensor, torch.Tensor):
+            raise ValueError("Input must be a PyTorch tensor.")
+        
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        logger.debug(f"Saving tensor to {output_path}")
+        
+        if format == "pt":
+            torch.save(tensor, output_path)
+        elif format == "npy":
+            np.save(output_path, tensor.numpy())
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+            
+        logger.info(f"Successfully saved tensor to {output_path}")
+    
+    except Exception as e:
+        logger.exception(f"Failed to save tensor to {output_path}.")
+        raise IOError(f"Failed to save tensor: {output_path}.") from e
