@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
-from cuhk_project.CNN.utils.visualization import visualize_conv_results
+from src.cuhk_project.CNN.utils.visualization import visualize_conv_results
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -61,8 +61,11 @@ def debug_conv_tensor(
     Returns:
         Output tensor [out_channels,H,W]
     """
+    if input_tensor.dim() == 3:
+        input_tensor = input_tensor.unsqueeze(0) 
+
     config = {
-        'in_channels': input_tensor.shape[0],
+        'in_channels': 3 if input_tensor.size(1) == 3 else 1,
         'out_channels': out_channels,
         'kernel_size': kernel_size,
         'stride': stride,
@@ -84,17 +87,17 @@ def debug_conv_tensor(
                 denormalize=True
             )
     
-    if visualize and input_tensor.shape[0] == 3:  # Only visualize RGB inputs
+    if visualize: 
         output_dir = Path("tests/test_output")
-        vis_path = output_dir/f"conv_vis_k{kernel_size}_c{out_channels}.png"
+        save_path = output_dir/f"conv_vis_k{kernel_size}_c{out_channels}.png"
         visualize_conv_results(
-            input_tensor,
-            output_tensor,
-            kernel_size,
-            out_channels,
-            vis_path
+            input_tensor=input_tensor.squeeze(0),
+            output_tensor=output_tensor.squeeze(0),
+            kernel_size=kernel_size,
+            out_channels=out_channels,
+            save_path=save_path
         )
-        print(f"Visualization saved to {vis_path}")
+        print(f"Visualization saved to {save_path}")
     return output_tensor
 
 def test_visualization(
@@ -112,7 +115,7 @@ def test_visualization(
         visualize: Whether to generate visualization
     """
     # Create test tensor
-    test_img = torch.rand(*tensor_shape)
+    test_img = torch.rand(1, *tensor_shape)
     output_dir = Path("tests/test_output")
     output_dir.mkdir(exist_ok=True)
     
@@ -152,8 +155,11 @@ if __name__ == "__main__":
                       help="Save all output channels as images")
     
     # Visualization control
+    parser.add_argument("--visualize", action="store_true", default=True,
+                  help="Enable visualization output (default: True)")
     parser.add_argument("--no-vis", action="store_false", dest="visualize",
-                  help="Disable result visualization")
+                  help="Disable visualization output")
+
     
     # Test parameters
     parser.add_argument("--test-kernel", type=int, default=3,
@@ -171,7 +177,7 @@ if __name__ == "__main__":
             kernel_size=args.test_kernel,
             out_channels=args.test_channels,
             tensor_shape=args.test_shape,
-            visualize=not args.no_vis
+            visualize=args.visualize
         )
     else:
         # Prepare input tensor
@@ -181,7 +187,7 @@ if __name__ == "__main__":
             input_tensor = torch.rand(*args.tensor_shape)
         
         # Execute debug
-        output = debug_conv_tensor(
+        output_tensor = debug_conv_tensor(
             input_tensor=input_tensor,
             kernel_size=args.kernel_size,
             out_channels=args.out_channels,
@@ -192,5 +198,5 @@ if __name__ == "__main__":
     
     # Print summary
     print(f"Input shape: {input_tensor.shape}")
-    print(f"Output shape: {output.shape}")
-    print(f"Value range: {output.min().item():.4f} ~ {output.max().item():.4f}")
+    print(f"Output shape: {output_tensor.shape}")
+    print(f"Value range: {output_tensor.min().item():.4f} ~ {output_tensor.max().item():.4f}")

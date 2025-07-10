@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Optional, Union
 import torch
+from cuhk_project import __version__ 
 from cuhk_project.utils.logger import configure_logging
 
 class Base(ABC):
@@ -13,7 +14,10 @@ class Base(ABC):
             config: Dictionary of processor
         """
         self.config = config
-        self.logger = configure_logging(module=self.__class__.__name__)
+        self.logger = configure_logging(
+            version=__version__,
+            module=self.__class__.__name__
+        )
         self._validate_config()
         self.logger.info(f"Initialized {self.__class__.__name__} with config: {config}")
 

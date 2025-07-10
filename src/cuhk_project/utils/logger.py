@@ -17,7 +17,7 @@ except ImportError:
     nn = DummyNN()
 
 
-def configure_logging(version: str, log_dir: Path = None, module: str = None):
+def configure_logging(version: str = "0.1.0", log_dir: Path = None, module: str = None):
     """Centralized logging configuration"""
     log_dir = log_dir or Path(__file__).parent.parent / "logs"
     log_dir.mkdir(exist_ok=True)
