@@ -184,7 +184,6 @@ def debug_conv_tensor(
         )
 
     if debug_numerical:
-        from src.cuhk_project.CNN.utils.debug_utils import ConvDebugger
         report_dir = Path("tests/test_output/numerical_reports")
         ConvDebugger.generate_matrix_report(
             input_tensor,
