@@ -51,7 +51,7 @@ def debug_conv_tensor(
     visualize: bool = True,
     inspect=False, 
     matrix_region=(5,5),
-    debug_numerical=False
+    debug_numerical=True
 ) -> torch.Tensor:
     """Debug convolution effect on input tensor
     
