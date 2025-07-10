@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Dict
 from .base import Base
-from ... import logger
+from cuhk_project.utils.logger import configure_logging, get_logger
 
 class Conv(Base):
     """Standard Conv processor, implementation of 2D convolution"""
@@ -49,7 +49,7 @@ class Conv(Base):
         
         # Initialize weight
         self._init_weights()
-        logger.info(f"Initialized Conv2d layer: {self.conv}")
+        self.logger.info(f"Initialized Conv2d layer: {self.conv}")
 
     def _init_weights(self):
         """Xavier initialize conv weight"""
@@ -78,7 +78,7 @@ class Conv(Base):
                 f"got {image.size(1)}"
             )
             
-        logger.debug(
+        self.logger.info(
             f"Processing image with shape {image.shape} "
             f"using kernel {self.conv.kernel_size}"
         )

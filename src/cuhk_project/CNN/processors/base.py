@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Optional, Union
 import torch
-from ... import logger
+from cuhk_project.utils.logger import configure_logging, get_logger
 
 class Base(ABC):
     """Abstract method of all processors"""
@@ -14,7 +14,7 @@ class Base(ABC):
         """
         self.config = config
         self._validate_config()
-        logger.debug(f"Initialized {self.__class__.__name__} with config: {config}")
+        self.logger.debug(f"Initialized {self.__class__.__name__} with config: {config}")
 
     def _validate_config(self) -> None:
         """Validate of configurations"""
@@ -67,10 +67,10 @@ class Base(ABC):
                 from ..utils.image_io import save_as_image
                 save_as_image(image, path, format=format)
                 
-            logger.info(f"Saved result to {path}")
+            self.logger.info(f"Saved result to {path}")
             
         except Exception as e:
-            logger.exception(f"Failed to save result to {path}")
+            self.logger.exception(f"Failed to save result to {path}")
             raise
 
     def __repr__(self) -> str:
