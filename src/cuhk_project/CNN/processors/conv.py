@@ -91,3 +91,10 @@ class Conv(Base):
             f"out_channels={self.conv.out_channels}, "
             f"kernel_size={self.conv.kernel_size}"
         )
+
+    def get_kernel_info(self):
+        """Return kernel weights and bias"""
+        return {
+            'weights': self.conv.weight.detach().cpu(),
+            'bias': self.conv.bias.detach().cpu()
+        }

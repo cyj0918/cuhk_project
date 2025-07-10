@@ -3,6 +3,8 @@ import torch
 import numpy as np
 from pathlib import Path
 from typing import Tuple, Optional
+import matplotlib.pyplot as plt
+from torchvision.utils import make_grid
 
 class ConvDebugger:
     @staticmethod
@@ -75,3 +77,23 @@ class ConvDebugger:
         
         print(f"Generated numerical report at: {report_path}")
         return report_path
+    
+    @staticmethod
+    def visualize_kernels(kernel_info, save_dir: Path):
+        """Visualize and save kernel weights"""
+        save_dir.mkdir(exist_ok=True)
+        weights = kernel_info['weights']
+        
+        # Create grid of kernel visualizations
+        grid = make_grid(weights, nrow=4, normalize=True, scale_each=True)
+        
+        plt.figure(figsize=(12, 6))
+        plt.imshow(grid.permute(1, 2, 0))
+        plt.title('Convolution Kernels')
+        plt.axis('off')
+        
+        save_path = save_dir / 'kernel_visualization.png'
+        plt.savefig(save_path)
+        plt.close()
+        
+        return save_path

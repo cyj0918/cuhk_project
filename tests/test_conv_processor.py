@@ -12,6 +12,54 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+def create_parser():
+    """Create and configure argument parser"""
+    parser = argparse.ArgumentParser(description='Test CNN convolution processor')
+    
+    # Input source selection
+    input_group = parser.add_mutually_exclusive_group()
+    input_group.add_argument("--input", type=str,
+                           help="Path to input image")
+    input_group.add_argument("--tensor-shape", type=int, nargs=3,
+                           default=[3,256,256],
+                           help="Random tensor shape [C,H,W]")
+    
+    # Convolution parameters
+    parser.add_argument("--kernel-size", type=int, default=3,
+                      help="Kernel size (3,5,7...)")
+    parser.add_argument("--out-channels", type=int, default=16,
+                      help="Number of output channels")
+    parser.add_argument("--stride", type=int, default=1,
+                      help="Stride value (1,2,3...)")
+    parser.add_argument("--save-all", action="store_true",
+                      help="Save all output channels as images")
+    
+    # Visualization control
+    parser.add_argument("--visualize", action="store_true", default=True,
+                  help="Enable visualization output (default: True)")
+    parser.add_argument("--no-vis", action="store_false", dest="visualize",
+                  help="Disable visualization output")
+
+    # Test parameters
+    parser.add_argument("--test-kernel", type=int, default=3,
+                      help="Kernel size for visualization test")
+    parser.add_argument("--test-channels", type=int, default=16,
+                      help="Output channels for visualization test")
+    parser.add_argument("--test-shape", type=int, nargs=3, default=[3,256,256],
+                      help="Tensor shape for visualization test [C,H,W]")
+    parser.add_argument("--run-test", action="store_true",
+                      help="Run visualization test case")
+    parser.add_argument("--inspect", action="store_true",
+                  help="Inspect matrix values during processing")
+    parser.add_argument("--matrix-region", type=int, nargs=2, default=[5,5],
+                  help="Region size to display matrix values [height width]")
+    parser.add_argument("--numerical", action="store_true",
+                  help="Generate detailed numerical matrix reports")
+    parser.add_argument("--kernels", action="store_true",
+                  help="Inspect convolution kernel weights")
+    
+    return parser
+
 def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, stride: int):
     """Testing of completed Conv processing with dynamic parameters"""
     # Dynamic configuration
@@ -51,7 +99,8 @@ def debug_conv_tensor(
     visualize: bool = True,
     inspect=False, 
     matrix_region=(5,5),
-    debug_numerical=True
+    debug_numerical=True,
+    inspect_kernels=True
 ) -> torch.Tensor:
     """Debug convolution effect on input tensor
     
@@ -78,6 +127,25 @@ def debug_conv_tensor(
     
     processor = Conv(config)
     output_tensor = processor.process(input_tensor)
+
+    if inspect_kernels:
+        kernel_info = processor.get_kernel_info()
+        kernel_path = ConvDebugger.visualize_kernels(
+            kernel_info,
+            Path("tests/test_output/kernel_inspection")
+        )
+        print(f"Kernel visualization saved to {kernel_path}")
+        
+        # Print kernel numerical values
+        ConvDebugger.generate_matrix_report(
+            kernel_info['weights'],
+            "Kernel Weights",
+            Path("tests/test_output/numerical_reports")
+        )
+
+         # Add kernel shape verification here
+        print(f"Kernel shape: {kernel_info['weights'].shape}")
+        print(f"Bias shape: {kernel_info['bias'].shape}")
     
     if save_all_channels:
         output_dir = Path("tests/test_output")
@@ -165,50 +233,9 @@ def test_visualization(
     assert output.shape == (out_channels, *tensor_shape[1:]), "Output shape mismatch"
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Test CNN convolution processor')
-    
-    # Input source selection
-    input_group = parser.add_mutually_exclusive_group()
-    input_group.add_argument("--input", type=str,
-                           help="Path to input image")
-    input_group.add_argument("--tensor-shape", type=int, nargs=3,
-                           default=[3,256,256],
-                           help="Random tensor shape [C,H,W]")
-    
-    # Convolution parameters
-    parser.add_argument("--kernel-size", type=int, default=3,
-                      help="Kernel size (3,5,7...)")
-    parser.add_argument("--out-channels", type=int, default=16,
-                      help="Number of output channels")
-    parser.add_argument("--stride", type=int, default=1,
-                      help="Stride value (1,2,3...)")
-    parser.add_argument("--save-all", action="store_true",
-                      help="Save all output channels as images")
-    
-    # Visualization control
-    parser.add_argument("--visualize", action="store_true", default=True,
-                  help="Enable visualization output (default: True)")
-    parser.add_argument("--no-vis", action="store_false", dest="visualize",
-                  help="Disable visualization output")
-
-    
-    # Test parameters
-    parser.add_argument("--test-kernel", type=int, default=3,
-                      help="Kernel size for visualization test")
-    parser.add_argument("--test-channels", type=int, default=16,
-                      help="Output channels for visualization test")
-    parser.add_argument("--test-shape", type=int, nargs=3, default=[3,256,256],
-                      help="Tensor shape for visualization test [C,H,W]")
-    parser.add_argument("--run-test", action="store_true",
-                      help="Run visualization test case")
-    parser.add_argument("--inspect", action="store_true",
-                  help="Inspect matrix values during processing")
-    parser.add_argument("--matrix-region", type=int, nargs=2, default=[5,5],
-                  help="Region size to display matrix values [height width]")
-    parser.add_argument("--numerical", action="store_true",
-                  help="Generate detailed numerical matrix reports")
-
+    parser = create_parser()
     args = parser.parse_args()
+    
     if args.run_test:
         test_visualization(
             kernel_size=args.test_kernel,
@@ -232,14 +259,10 @@ if __name__ == "__main__":
             save_all_channels=args.save_all,
             visualize=args.visualize,
             inspect=args.inspect,
-            matrix_region=args.matrix_region
+            matrix_region=args.matrix_region,
+            debug_numerical=args.numerical,
+            inspect_kernels=args.kernels
         )
-
-        if args.inspect:
-            ConvDebugger.save_matrix_values(
-                output_tensor,
-                "tests/test_output/final_matrix.npy"
-            )
     
     # Print summary
     print(f"Input shape: {input_tensor.shape}")
