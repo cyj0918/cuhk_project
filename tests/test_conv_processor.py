@@ -1,4 +1,4 @@
-# python -m tests.test_conv_processor --input tests/test_data/input1.jpg
+# python -m tests.test_conv_processor --input tests/test_data/input1.jpg --visualize --kernels --numerical --inspect --matrix-region 5 5 --save-all
 
 import sys
 import torch
@@ -116,6 +116,16 @@ def debug_conv_tensor(
     """
     if input_tensor.dim() == 3:
         input_tensor = input_tensor.unsqueeze(0) 
+    
+    # Debug prints here ▼
+    print("\n=== Input Tensor Inspection ===")
+    print("Top-left corner (5x5):")
+    print(input_tensor[0, :, :5, :5])  # Should be zeros for black region
+    
+    print("\nCenter region (5x5):") 
+    center = input_tensor.shape[2]//2
+    print(input_tensor[0, :, center:center+5, center:center+5])
+    # End of debug prints ▲
 
     config = {
         'in_channels': 3 if input_tensor.size(1) == 3 else 1,
