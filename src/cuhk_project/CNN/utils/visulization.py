@@ -11,20 +11,38 @@ def visualize_conv_results(
     out_channels: int,
     save_path: Path
 ):
-    """Visualize convolution input and output channels"""
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    """Visualize convolution input and output channels
     
-    # Input image
-    ax1.imshow(input_tensor.permute(1, 2, 0).cpu().numpy())
-    ax1.set_title('Input Image')
-    ax1.axis('off')
+    Args:
+        input_tensor: Input tensor [C,H,W]
+        output_tensor: Output feature maps [C,H,W] 
+        kernel_size: Used kernel size
+        out_channels: Number of output channels
+        save_path: Path to save visualization
+    """
+    # Create figure with 2 subplots
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
     
-    # Output features grid
-    grid = make_grid(output_tensor.unsqueeze(1), nrow=4, normalize=True)
-    ax2.imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap='gray')
-    ax2.set_title(f'Output Features\nk={kernel_size}, c={out_channels}')
-    ax2.axis('off')
-    
-    plt.tight_layout()
-    plt.savefig(save_path)
-    plt.close()
+    try:
+        # Input image visualization
+        if input_tensor.shape[0] == 3:  # RGB
+            axes[0].imshow(input_tensor.permute(1, 2, 0).cpu().numpy())
+        else:  # Grayscale
+            axes[0].imshow(input_tensor[0].cpu().numpy(), cmap='gray')
+        axes[0].set_title('Input Image')
+        axes[0].axis('off')
+
+        # Output features grid
+        grid = make_grid(output_tensor.unsqueeze(1), nrow=4, normalize=True)
+        axes[1].imshow(grid.permute(1, 2, 0).cpu().numpy(), cmap='gray')
+        axes[1].set_title(f'Output Features\nk={kernel_size}, c={out_channels}')
+        axes[1].axis('off')
+
+        # Save and close
+        fig.tight_layout()
+        fig.savefig(save_path)
+        plt.close(fig)
+        
+    except Exception as e:
+        plt.close(fig)
+        raise RuntimeError(f"Visualization failed: {str(e)}") from e
