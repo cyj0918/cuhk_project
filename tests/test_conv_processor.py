@@ -6,6 +6,9 @@ import argparse
 from pathlib import Path
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
+from cuhk_project.CNN.utils.visualization import visualize_conv_results
+import matplotlib.pyplot as plt
+
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, stride: int):
@@ -43,7 +46,8 @@ def debug_conv_tensor(
     kernel_size: int = 3,
     out_channels: int = 16,
     stride: int = 1,
-    save_all_channels: bool = False
+    save_all_channels: bool = False,
+    visualize: bool = True
 ) -> torch.Tensor:
     """Debug convolution effect on input tensor
     
@@ -80,7 +84,51 @@ def debug_conv_tensor(
                 denormalize=True
             )
     
+    if visualize and input_tensor.shape[0] == 3:  # Only visualize RGB inputs
+        output_dir = Path("tests/test_output")
+        vis_path = output_dir/f"conv_vis_k{kernel_size}_c{out_channels}.png"
+        visualize_conv_results(
+            input_tensor,
+            output_tensor,
+            kernel_size,
+            out_channels,
+            vis_path
+        )
+        print(f"Visualization saved to {vis_path}")
     return output_tensor
+
+def test_visualization(
+    kernel_size: int = 3,
+    out_channels: int = 16,
+    tensor_shape: tuple = (3, 256, 256),
+    visualize: bool = True
+):
+    """Test visualization functionality with configurable parameters
+    
+    Args:
+        kernel_size: Convolution kernel size to test
+        out_channels: Number of output channels to test
+        tensor_shape: Shape of random test tensor [C,H,W]
+        visualize: Whether to generate visualization
+    """
+    # Create test tensor
+    test_img = torch.rand(*tensor_shape)
+    output_dir = Path("tests/test_output")
+    output_dir.mkdir(exist_ok=True)
+    
+    # Run with parameters
+    output = debug_conv_tensor(
+        test_img,
+        kernel_size=kernel_size,
+        out_channels=out_channels,
+        visualize=visualize
+    )
+    
+    # Verify output
+    vis_path = output_dir/f"conv_vis_k{kernel_size}_c{out_channels}.png"
+    if visualize:
+        assert vis_path.exists(), f"Visualization file {vis_path} not created"
+    assert output.shape == (out_channels, *tensor_shape[1:]), "Output shape mismatch"
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test CNN convolution processor')
@@ -103,22 +151,44 @@ if __name__ == "__main__":
     parser.add_argument("--save-all", action="store_true",
                       help="Save all output channels as images")
     
+    # Visualization control
+    parser.add_argument("--no-vis", action="store_false", dest="visualize",
+                  help="Disable result visualization")
+    
+    # Test parameters
+    parser.add_argument("--test-kernel", type=int, default=3,
+                      help="Kernel size for visualization test")
+    parser.add_argument("--test-channels", type=int, default=16,
+                      help="Output channels for visualization test")
+    parser.add_argument("--test-shape", type=int, nargs=3, default=[3,256,256],
+                      help="Tensor shape for visualization test [C,H,W]")
+    parser.add_argument("--run-test", action="store_true",
+                      help="Run visualization test case")
+    
     args = parser.parse_args()
-    
-    # Prepare input tensor
-    if args.input:
-        input_tensor = load_image(args.input)
+    if args.run_test:
+        test_visualization(
+            kernel_size=args.test_kernel,
+            out_channels=args.test_channels,
+            tensor_shape=args.test_shape,
+            visualize=not args.no_vis
+        )
     else:
-        input_tensor = torch.rand(*args.tensor_shape)
-    
-    # Execute debug
-    output = debug_conv_tensor(
-        input_tensor=input_tensor,
-        kernel_size=args.kernel_size,
-        out_channels=args.out_channels,
-        stride=args.stride,
-        save_all_channels=args.save_all
-    )
+        # Prepare input tensor
+        if args.input:
+            input_tensor = load_image(args.input)
+        else:
+            input_tensor = torch.rand(*args.tensor_shape)
+        
+        # Execute debug
+        output = debug_conv_tensor(
+            input_tensor=input_tensor,
+            kernel_size=args.kernel_size,
+            out_channels=args.out_channels,
+            stride=args.stride,
+            save_all_channels=args.save_all,
+            visualize=args.visualize
+        )
     
     # Print summary
     print(f"Input shape: {input_tensor.shape}")

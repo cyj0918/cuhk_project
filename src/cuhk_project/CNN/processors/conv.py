@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 from typing import Dict
 from .base import Base
-from cuhk_project.utils.logger import configure_logging, get_logger
 
 class Conv(Base):
     """Standard Conv processor, implementation of 2D convolution"""

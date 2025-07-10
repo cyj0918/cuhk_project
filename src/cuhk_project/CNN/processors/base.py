@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Optional, Union
 import torch
-from cuhk_project.utils.logger import configure_logging, get_logger
+from cuhk_project.utils.logger import configure_logging
 
 class Base(ABC):
     """Abstract method of all processors"""
@@ -13,8 +13,9 @@ class Base(ABC):
             config: Dictionary of processor
         """
         self.config = config
+        self.logger = configure_logging(module=self.__class__.__name__)
         self._validate_config()
-        self.logger.debug(f"Initialized {self.__class__.__name__} with config: {config}")
+        self.logger.info(f"Initialized {self.__class__.__name__} with config: {config}")
 
     def _validate_config(self) -> None:
         """Validate of configurations"""

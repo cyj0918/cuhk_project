@@ -7,7 +7,7 @@ from .processors import (
 )
 from .utils import (
     image_io,
-    visulization
+    visualization
 )
 
 __all__ = [
@@ -16,5 +16,5 @@ __all__ = [
     'conv',
     'cspnet',
     'image_io',
-    'visulization'
+    'visualization'
 ]
