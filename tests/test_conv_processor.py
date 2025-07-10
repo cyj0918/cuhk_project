@@ -4,6 +4,7 @@ import sys
 import torch
 import argparse
 from pathlib import Path
+from src.cuhk_project.CNN.utils.debug_utils import ConvDebugger
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
 from src.cuhk_project.CNN.utils.visualization import visualize_conv_results
@@ -47,7 +48,10 @@ def debug_conv_tensor(
     out_channels: int = 16,
     stride: int = 1,
     save_all_channels: bool = False,
-    visualize: bool = True
+    visualize: bool = True,
+    inspect=False, 
+    matrix_region=(5,5),
+    debug_numerical=False
 ) -> torch.Tensor:
     """Debug convolution effect on input tensor
     
@@ -98,6 +102,33 @@ def debug_conv_tensor(
             save_path=save_path
         )
         print(f"Visualization saved to {save_path}")
+
+    if inspect:
+        ConvDebugger.print_matrix_values(
+            input_tensor,
+            "Input Matrix",
+            region=matrix_region
+        )
+        ConvDebugger.print_matrix_values(
+            output_tensor,
+            "Output Matrix", 
+            region=matrix_region
+        )
+
+    if debug_numerical:
+        from src.cuhk_project.CNN.utils.debug_utils import ConvDebugger
+        report_dir = Path("tests/test_output/numerical_reports")
+        ConvDebugger.generate_matrix_report(
+            input_tensor,
+            "Input Matrix",
+            report_dir
+        )
+        ConvDebugger.generate_matrix_report(
+            output_tensor,
+            "Output Matrix", 
+            report_dir
+        )
+
     return output_tensor
 
 def test_visualization(
@@ -170,7 +201,13 @@ if __name__ == "__main__":
                       help="Tensor shape for visualization test [C,H,W]")
     parser.add_argument("--run-test", action="store_true",
                       help="Run visualization test case")
-    
+    parser.add_argument("--inspect", action="store_true",
+                  help="Inspect matrix values during processing")
+    parser.add_argument("--matrix-region", type=int, nargs=2, default=[5,5],
+                  help="Region size to display matrix values [height width]")
+    parser.add_argument("--numerical", action="store_true",
+                  help="Generate detailed numerical matrix reports")
+
     args = parser.parse_args()
     if args.run_test:
         test_visualization(
@@ -193,8 +230,16 @@ if __name__ == "__main__":
             out_channels=args.out_channels,
             stride=args.stride,
             save_all_channels=args.save_all,
-            visualize=args.visualize
+            visualize=args.visualize,
+            inspect=args.inspect,
+            matrix_region=args.matrix_region
         )
+
+        if args.inspect:
+            ConvDebugger.save_matrix_values(
+                output_tensor,
+                "tests/test_output/final_matrix.npy"
+            )
     
     # Print summary
     print(f"Input shape: {input_tensor.shape}")
