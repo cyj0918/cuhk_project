@@ -112,7 +112,8 @@ def save_as_image(
     format: str = "JPEG",
     quality: int = 95,
     denormalize: bool = True,
-    apply_colormap: bool = False
+    apply_colormap: bool = True,
+    save_all_channels: bool = True
 ) -> None:
     """Save tensor to standard image format (JPEG or PNG)
 
@@ -123,6 +124,7 @@ def save_as_image(
         quality: Save quality (1-100)
         denormalize: Denormalize or not (0-255)
         apply_colormap: Colormap or not
+        save_all_channels: Whether to save all channels as separate images
     
     Raises:
         ValueError: Input tensor or value error
@@ -141,60 +143,92 @@ def save_as_image(
                 raise ValueError("Batch size must be 1 for image saving")
             tensor = tensor.squeeze(0)
 
-        # Denormalize
-        tensor = tensor.float()
-        if denormalize:
-            if tensor.numel() > 0:  # Check not zero
-                min_val, max_val = tensor.min(), tensor.max()
-                if min_val != max_val:  # Avoid divided by zero
-                    tensor = (tensor - min_val) / (max_val - min_val) * 255
-                else:
-                    tensor = tensor * 0 + 128  # Grayscale
-            tensor = tensor.clamp(0, 255)
-    
-        # Turn into PIL image
-        array = tensor.float().detach().cpu().numpy()
+        # Handle multi-channel outputs
+        if save_all_channels and tensor.shape[0] > 1:
+            output_path = Path(output_path)
+            for c in range(tensor.shape[0]):
+                channel_path = output_path.parent / f"{output_path.stem}_ch{c}{output_path.suffix}"
+                _save_single_channel(
+                    tensor=tensor[c:c+1],
+                    output_path=channel_path,
+                    format=format,
+                    quality=quality,
+                    denormalize=denormalize,
+                    apply_colormap=apply_colormap
+                )
+            return
 
-        # Single channel
-        if array.shape[0] == 1:
-            # Normalized to 0-1
-            if array.max() > array.min():  # Avoid divided by zero
-                array = (array - array.min()) / (array.max() - array.min())
-            else:  # If range of numbers are too small
-                array = (array - array.mean()) / (array.std() + 1e-6) * 0.2 + 0.5
-            
-            # Colormap
-            if apply_colormap:
-                import matplotlib.pyplot as plt
-                cmap = plt.get_cmap('viridis')
-                array = (cmap(array.squeeze(0))[..., :3] * 255).astype('uint8')  # RGB
-                array = array.transpose(2, 0, 1)  # HWC -> CHW
-                image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
-            else:
-                array = (array * 255).astype('uint8')
-                image = Image.fromarray(array.squeeze(0), 'L')
-
-        # RGB graph
-        elif array.shape[0] == 3:
-            array = np.clip(array, 0, 255).astype('uint8')
-            image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
-        else:
-            raise ValueError(f"Unsupported channel size: {array.shape[0]}")
+        _save_single_channel(
+            tensor=tensor,
+            output_path=Path(output_path),
+            format=format,
+            quality=quality,
+            denormalize=denormalize,
+            apply_colormap=apply_colormap
+        )
         
-        # Ensure ouput direction exist
-        output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Save image
-        save_args = {}
-        if format.upper() in ("JPEG", "JPG"):
-            save_args["quality"] = quality
-        elif format.upper() == "PNG":
-            save_args["compress_level"] = min(9, int((100 - quality) / 10))
-            
-        image.save(output_path, format=format, **save_args)
-        logger.info(f"Image saved to {output_path}")
-    
     except Exception as e:
         logger.exception(f"Failed to save image to {output_path}.")
         raise IOError(f"Image save failed: {output_path}.") from e
+
+def _save_single_channel(
+    tensor: torch.Tensor,
+    output_path: Path,
+    format: str,
+    quality: int,
+    denormalize: bool,
+    apply_colormap: bool
+) -> None:
+    """Internal method to save single channel image"""
+    # Denormalize
+    tensor = tensor.float()
+    if denormalize:
+        if tensor.numel() > 0:  # Check not zero
+            min_val, max_val = tensor.min(), tensor.max()
+            if min_val != max_val:  # Avoid divided by zero
+                tensor = (tensor - min_val) / (max_val - min_val) * 255
+            else:
+                tensor = tensor * 0 + 128  # Grayscale
+        tensor = tensor.clamp(0, 255)
+    
+    # Turn into PIL image
+    array = tensor.float().detach().cpu().numpy()
+
+    # Single channel
+    if array.shape[0] == 1:
+        # Normalized to 0-1
+        if array.max() > array.min():  # Avoid divided by zero
+            array = (array - array.min()) / (array.max() - array.min())
+        else:  # If range of numbers are too small
+            array = (array - array.mean()) / (array.std() + 1e-6) * 0.2 + 0.5
+        
+        # Colormap
+        if apply_colormap:
+            import matplotlib.pyplot as plt
+            cmap = plt.get_cmap('viridis')
+            array = (cmap(array.squeeze(0))[..., :3] * 255).astype('uint8')  # RGB
+            array = array.transpose(2, 0, 1)  # HWC -> CHW
+            image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
+        else:
+            array = (array * 255).astype('uint8')
+            image = Image.fromarray(array.squeeze(0), 'L')
+
+    # RGB graph
+    elif array.shape[0] == 3:
+        array = np.clip(array, 0, 255).astype('uint8')
+        image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
+    else:
+        raise ValueError(f"Unsupported channel size: {array.shape[0]}")
+    
+    # Ensure output directory exists
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # Save image
+    save_args = {}
+    if format.upper() in ("JPEG", "JPG"):
+        save_args["quality"] = quality
+    elif format.upper() == "PNG":
+        save_args["compress_level"] = min(9, int((100 - quality) / 10))
+        
+    image.save(output_path, format=format, **save_args)
+    logger.info(f"Image saved to {output_path}")
