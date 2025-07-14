@@ -1,5 +1,5 @@
 # python -m tests.test_conv_processor --input tests/test_data/input1.jpg --visualize --kernels --numerical --inspect --matrix-region 5 5 --save-all
-
+# YOLOv11 first layer: python -m tests.test_conv_processor --input tests/test_data/input1.jpg --kernel-size 3 --out-channels 64 --stride 2 --visualize --kernels --numerical      
 import sys
 import torch
 import argparse
@@ -154,13 +154,14 @@ def debug_conv_tensor(
         )
         raise
 
-    if inspect_kernels:
+    if args.kernels:
         kernel_info = processor.get_kernel_info()
-        kernel_path = ConvDebugger.visualize_kernels(
-            kernel_info,
-            Path("tests/test_output/kernel_inspection")
-        )
-        logger.info(f"Kernel visualization saved to {kernel_path}")
+        if kernel_info['weights'] is not None:
+            kernel_path = ConvDebugger.visualize_kernels(
+                kernel_info,
+                Path("tests/test_output/kernel_inspection")
+            )
+            logger.info(f"Kernel visualization saved to {kernel_path}")
         
         # Print kernel numerical values
         ConvDebugger.generate_matrix_report(
@@ -169,7 +170,8 @@ def debug_conv_tensor(
             Path("tests/test_output/numerical_reports")
         )
         logger.debug("Kernel shape: %s", kernel_info['weights'].shape)
-        logger.debug("Bias shape: %s", kernel_info['bias'].shape)
+        if kernel_info['bias'] is not None:  # Add bias check
+            logger.debug("Bias shape: %s", kernel_info['bias'].shape)
     
     if save_all_channels:
         output_dir = Path("tests/test_output")

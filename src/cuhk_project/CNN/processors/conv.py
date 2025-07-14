@@ -95,8 +95,11 @@ class Conv(Base):
         )
 
     def get_kernel_info(self):
-        """Return kernel weights and bias"""
-        return {
+        """Return kernel weights and bias (if exists)"""
+        info = {
             'weights': self.conv.weight.detach().cpu(),
-            'bias': self.conv.bias.detach().cpu()
+            'bias': None  # Initialize as None
         }
+        if self.conv.bias is not None:
+            info['bias'] = self.conv.bias.detach().cpu()
+        return info
