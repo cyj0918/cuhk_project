@@ -5,6 +5,7 @@ import torch
 import argparse
 from pathlib import Path
 from src.cuhk_project.CNN.utils.debug_utils import ConvDebugger
+from src.cuhk_project.utils.logger import logger
 from src.cuhk_project.CNN.processors.conv import Conv
 from src.cuhk_project.CNN.utils.image_io import load_image, save_as_image
 from src.cuhk_project.CNN.utils.visualization import visualize_conv_results
@@ -70,7 +71,7 @@ def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, s
         'stride': stride,
         'padding': (kernel_size - 1) // 2  # Auto-calculate padding
     }
-    print(f"Using config: {config}")
+    logger.info(f"Using config: {config}")
     
     processor = Conv(config)
     output_dir = Path("tests/test_output")
@@ -88,7 +89,7 @@ def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, s
         output_dir/f"conv_feature_{param_str}.jpg",
         denormalize=True
     )
-    print(f"Results saved with prefix: {param_str}")
+    logger.info(f"Results saved with prefix: {param_str}")
 
 def debug_conv_tensor(
     input_tensor: torch.Tensor,
@@ -118,13 +119,11 @@ def debug_conv_tensor(
         input_tensor = input_tensor.unsqueeze(0) 
     
     # Debug prints here ▼
-    print("\n=== Input Tensor Inspection ===")
-    print("Top-left corner (5x5):")
-    print(input_tensor[0, :, :5, :5])  # Should be zeros for black region
-    
-    print("\nCenter region (5x5):") 
     center = input_tensor.shape[2]//2
-    print(input_tensor[0, :, center:center+5, center:center+5])
+    logger.debug("\n=== Input Tensor Inspection ===")
+    logger.debug("Top-left corner (5x5):\n%s", input_tensor[0, :, :5, :5])
+    logger.debug("\nCenter region (5x5):\n%s", 
+            input_tensor[0, :, center:center+5, center:center+5])
     # End of debug prints ▲
 
     config = {
@@ -144,7 +143,7 @@ def debug_conv_tensor(
             kernel_info,
             Path("tests/test_output/kernel_inspection")
         )
-        print(f"Kernel visualization saved to {kernel_path}")
+        logger.info(f"Kernel visualization saved to {kernel_path}")
         
         # Print kernel numerical values
         ConvDebugger.generate_matrix_report(
@@ -154,8 +153,8 @@ def debug_conv_tensor(
         )
 
          # Add kernel shape verification here
-        print(f"Kernel shape: {kernel_info['weights'].shape}")
-        print(f"Bias shape: {kernel_info['bias'].shape}")
+        logger.debug("Kernel shape: %s", kernel_info['weights'].shape)
+        logger.debug("Bias shape: %s", kernel_info['bias'].shape)
     
     if save_all_channels:
         output_dir = Path("tests/test_output")
@@ -179,8 +178,8 @@ def debug_conv_tensor(
             out_channels=out_channels,
             save_path=save_path
         )
-        print(f"Visualization saved to {save_path}")
-
+        logger.info(f"Visualization saved to {save_path}")
+        
     if inspect:
         ConvDebugger.print_matrix_values(
             input_tensor,
@@ -274,6 +273,8 @@ if __name__ == "__main__":
         )
     
     # Print summary
-    print(f"Input shape: {input_tensor.shape}")
-    print(f"Output shape: {output_tensor.shape}")
-    print(f"Value range: {output_tensor.min().item():.4f} ~ {output_tensor.max().item():.4f}")
+    logger.info("Input shape: %s", input_tensor.shape)
+    logger.info("Output shape: %s", output_tensor.shape)
+    logger.info("Value range: %.4f ~ %.4f", 
+           output_tensor.min().item(), 
+           output_tensor.max().item())
