@@ -46,29 +46,35 @@ def configure_logging(
     for handler in logger.handlers[:]:
         logger.removeHandler(handler)
     
-    # Main debug log file (captures all levels)
-    debug_log = log_dir / "debug.log"
-    file_handler = logging.FileHandler(debug_log)
-    file_handler.setLevel(file_level)
-    file_handler.setFormatter(logging.Formatter(
+    # 1. Debug log (all messages DEBUG and above)
+    debug_handler = logging.FileHandler(log_dir / "debug.log")
+    debug_handler.setLevel(logging.DEBUG)
+    debug_handler.setFormatter(logging.Formatter(
         "%(asctime)s [%(levelname)-8s] %(name)s:%(lineno)d - %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S"
     ))
     
-    # Error log file (captures ERROR and CRITICAL only)
-    error_log = log_dir / "error.log" 
-    error_handler = logging.FileHandler(error_log)
+    # 2. Info log (INFO and above)
+    info_handler = logging.FileHandler(log_dir / "info.log")
+    info_handler.setLevel(logging.INFO)
+    info_handler.setFormatter(logging.Formatter(
+        "%(asctime)s [%(levelname)-8s] %(message)s"
+    ))
+    
+    # 3. Error log (ERROR and CRITICAL only)
+    error_handler = logging.FileHandler(log_dir / "error.log")
     error_handler.setLevel(logging.ERROR)
     error_handler.setFormatter(logging.Formatter(
         "[%(levelname)s] %(asctime)s %(filename)s:%(lineno)d - %(message)s"
     ))
     
-    # Console handler with colored output
+    # Console handler with colors
     console_handler = logging.StreamHandler()
     console_handler.setLevel(console_level)
     console_handler.setFormatter(ColorFormatter())
     
-    logger.addHandler(file_handler)
+    logger.addHandler(debug_handler)
+    logger.addHandler(info_handler)
     logger.addHandler(error_handler)
     logger.addHandler(console_handler)
     
