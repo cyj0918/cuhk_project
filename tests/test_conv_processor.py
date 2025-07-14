@@ -79,16 +79,24 @@ def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, s
     
     # Load and process image
     image_tensor = load_image(input_path)
-    output_tensor = processor.process(image_tensor)
+    try:
+        output_tensor = processor.process(image_tensor)
+    except Exception as e:
+        logger.error("Failed to process image tensor: %s", str(e))
+        raise
     
     # Save results with parameter info in filename
     param_str = f"k{kernel_size}_c{out_channels}"
     processor.save_result(output_tensor, output_dir/f"conv_output_{param_str}.pt")
-    save_as_image(
-        output_tensor[:, 0:1],
-        output_dir/f"conv_feature_{param_str}.jpg",
-        denormalize=True
-    )
+    try:
+        save_as_image(
+            output_tensor[:, 0:1],
+            output_dir/f"conv_feature_{param_str}.jpg",
+            denormalize=True
+        )
+    except Exception as e:
+        logger.error("Failed to save feature image: %s", str(e))
+        raise
     logger.info(f"Results saved with prefix: {param_str}")
 
 def debug_conv_tensor(
@@ -135,7 +143,16 @@ def debug_conv_tensor(
     }
     
     processor = Conv(config)
-    output_tensor = processor.process(input_tensor)
+    try:
+        output_tensor = processor.process(input_tensor)
+    except Exception as e:
+        logger.error(
+            "Convolution failed | "
+            f"Kernel: {kernel_size}x{kernel_size} | "
+            f"Channels: {out_channels} | "
+            f"Error: {str(e)}"
+        )
+        raise
 
     if inspect_kernels:
         kernel_info = processor.get_kernel_info()
@@ -151,8 +168,6 @@ def debug_conv_tensor(
             "Kernel Weights",
             Path("tests/test_output/numerical_reports")
         )
-
-         # Add kernel shape verification here
         logger.debug("Kernel shape: %s", kernel_info['weights'].shape)
         logger.debug("Bias shape: %s", kernel_info['bias'].shape)
     
@@ -171,14 +186,19 @@ def debug_conv_tensor(
     if visualize: 
         output_dir = Path("tests/test_output")
         save_path = output_dir/f"conv_vis_k{kernel_size}_c{out_channels}.png"
-        visualize_conv_results(
-            input_tensor=input_tensor.squeeze(0),
-            output_tensor=output_tensor.squeeze(0),
-            kernel_size=kernel_size,
-            out_channels=out_channels,
-            save_path=save_path
-        )
-        logger.info(f"Visualization saved to {save_path}")
+        try:
+            visualize_conv_results(
+                input_tensor=input_tensor.squeeze(0),
+                output_tensor=output_tensor.squeeze(0),
+                kernel_size=kernel_size,
+                out_channels=out_channels,
+                save_path=save_path
+            )
+            logger.info(f"Visualization saved to {save_path}")
+        except Exception as e:
+            logger.error("Failed to generate visualization: %s", str(e))
+            if args.visualize:  # Only raise if visualization was explicitly requested
+                raise
         
     if inspect:
         ConvDebugger.print_matrix_values(
@@ -241,36 +261,46 @@ def test_visualization(
     assert output.shape == (out_channels, *tensor_shape[1:]), "Output shape mismatch"
 
 if __name__ == "__main__":
-    parser = create_parser()
-    args = parser.parse_args()
+    try:
+        parser = create_parser()
+        args = parser.parse_args()
     
-    if args.run_test:
-        test_visualization(
-            kernel_size=args.test_kernel,
-            out_channels=args.test_channels,
-            tensor_shape=args.test_shape,
-            visualize=args.visualize
-        )
-    else:
-        # Prepare input tensor
-        if args.input:
-            input_tensor = load_image(args.input)
+        if args.run_test:
+            test_visualization(
+                kernel_size=args.test_kernel,
+                out_channels=args.test_channels,
+                tensor_shape=args.test_shape,
+                visualize=args.visualize
+            )
         else:
-            input_tensor = torch.rand(*args.tensor_shape)
-        
-        # Execute debug
-        output_tensor = debug_conv_tensor(
-            input_tensor=input_tensor,
-            kernel_size=args.kernel_size,
-            out_channels=args.out_channels,
-            stride=args.stride,
-            save_all_channels=args.save_all,
-            visualize=args.visualize,
-            inspect=args.inspect,
-            matrix_region=args.matrix_region,
-            debug_numerical=args.numerical,
-            inspect_kernels=args.kernels
-        )
+            # Prepare input tensor
+            try:
+                if args.input:
+                    input_tensor = load_image(args.input)
+                else:
+                    input_tensor = torch.rand(*args.tensor_shape)
+                # Execute debug
+                output_tensor = debug_conv_tensor(
+                    input_tensor=input_tensor,
+                    kernel_size=args.kernel_size,
+                    out_channels=args.out_channels,
+                    stride=args.stride,
+                    save_all_channels=args.save_all,
+                    visualize=args.visualize,
+                    inspect=args.inspect,
+                    matrix_region=args.matrix_region,
+                    debug_numerical=args.numerical,
+                    inspect_kernels=args.kernels
+                )
+            except Exception as e:
+                logger.error("Processing failed: %s", str(e))
+                raise
+
+        logger.info("Operation completed successfully")
+
+    except Exception as e:
+        logger.critical("Test convolution processor failed: %s", str(e))
+        sys.exit(1)
     
     # Print summary
     logger.info("Input shape: %s", input_tensor.shape)
