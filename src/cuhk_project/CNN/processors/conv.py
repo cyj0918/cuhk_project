@@ -29,7 +29,7 @@ class Conv(Base):
                 kernel_size: Size of kernel
                 stride: Stride
                 padding: Padding
-                bias: Bias or not (default True)
+                bias: Bias or not (default False)
                 dilation: Dilation parameter (default 1)
                 groups: Grouping parameter (default 1)
         """
@@ -46,8 +46,8 @@ class Conv(Base):
             dilation=config.get('dilation', 1),
             groups=config.get('groups', 1)
         )
-        self.bn = nn.BatchNorm2d(config['out_channels'])
-        self.act = nn.SiLU()
+        self.bn = nn.BatchNorm2d(config['out_channels']) # Add the BatchNorm layer
+        self.act = nn.SiLU() # Add the SiLU function
         self._init_weights()
         self.logger.info(f"Initialized Conv2d layer: {self.conv}")
 
