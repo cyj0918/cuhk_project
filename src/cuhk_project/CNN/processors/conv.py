@@ -1,6 +1,7 @@
 # Convolution Process
 import torch
 import torch.nn as nn
+import math
 from typing import Dict
 from .base import Base
 
@@ -41,20 +42,21 @@ class Conv(Base):
             kernel_size=config['kernel_size'],
             stride=config.get('stride', 1),
             padding=config.get('padding', 0),
-            bias=config.get('bias', True),
+            bias=config.get('bias', False),
             dilation=config.get('dilation', 1),
             groups=config.get('groups', 1)
         )
-        
-        # Initialize weight
+        self.bn = nn.BatchNorm2d(config['out_channels'])
+        self.act = nn.SiLU()
         self._init_weights()
         self.logger.info(f"Initialized Conv2d layer: {self.conv}")
 
     def _init_weights(self):
-        """Xavier initialize conv weight"""
-        nn.init.xavier_uniform_(self.conv.weight)
+        """Kaiming initialize conv weight like YOLO"""
+        nn.init.kaiming_uniform_(self.conv.weight, a=math.sqrt(5))  # the initial method used by YOLO
         if self.conv.bias is not None:
-            nn.init.constant_(self.conv.bias, 0.1)
+            nn.init.zeros_(self.conv.bias)  # YOLO initial bias as 0
+
 
     def process(self, image: torch.Tensor) -> torch.Tensor:
         """Do the Conv process
@@ -82,7 +84,7 @@ class Conv(Base):
             f"using kernel {self.conv.kernel_size}"
         )
         
-        return self.conv(image)
+        return self.act(self.bn(self.conv(image)))
 
     def extra_repr(self) -> str:
         """Extra info"""
