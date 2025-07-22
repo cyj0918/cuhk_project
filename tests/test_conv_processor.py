@@ -90,7 +90,7 @@ def test_conv_processing(input_path: str, kernel_size: int, out_channels: int, s
     processor.save_result(output_tensor, output_dir/f"conv_output_{param_str}.pt")
     try:
         save_as_image(
-            output_tensor[:, 0:1],
+            output_tensor,
             output_dir/f"conv_feature_{param_str}.jpg",
             denormalize=True
         )

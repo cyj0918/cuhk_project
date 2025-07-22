@@ -1,5 +1,7 @@
 import torch
 import numpy as np
+import matplotlib as mpl
+import matplotlib.pyplot as plt
 from PIL import Image, UnidentifiedImageError
 from pathlib import Path
 from typing import Optional, Tuple, Union
@@ -190,29 +192,26 @@ def _save_single_channel(
             else:
                 tensor = tensor * 0 + 128  # Grayscale
         tensor = tensor.clamp(0, 255)
-    
-    # Turn into PIL image
-    array = tensor.float().detach().cpu().numpy()
-
-    # Single channel
+    # Convert to numpy
+    array = tensor.detach().cpu().numpy()
+    # Single channel processing
     if array.shape[0] == 1:
-        # Normalized to 0-1
-        if array.max() > array.min():  # Avoid divided by zero
-            array = (array - array.min()) / (array.max() - array.min())
-        else:  # If range of numbers are too small
-            array = (array - array.mean()) / (array.std() + 1e-6) * 0.2 + 0.5
-        
-        # Colormap
+        # Apply colormap if requested
         if apply_colormap:
-            import matplotlib.pyplot as plt
-            cmap = plt.get_cmap('viridis')
-            array = (cmap(array.squeeze(0))[..., :3] * 255).astype('uint8')  # RGB
-            array = array.transpose(2, 0, 1)  # HWC -> CHW
-            image = Image.fromarray(array.transpose(1, 2, 0), 'RGB')
+            # Get 2D array
+            arr_2d = array.squeeze(0)
+            
+            # Create normalized scalar mappable
+            norm = mpl.colors.Normalize(vmin=arr_2d.min(), vmax=arr_2d.max())
+            mapper = plt.cm.ScalarMappable(norm=norm, cmap='viridis')
+            
+            # Apply colormap and convert to RGB
+            rgb_array = (mapper.to_rgba(arr_2d)[..., :3] * 255).astype(np.uint8)
+            image = Image.fromarray(rgb_array, 'RGB')
         else:
-            array = (array * 255).astype('uint8')
-            image = Image.fromarray(array.squeeze(0), 'L')
-
+            # Convert to grayscale
+            array = (array.squeeze(0) * 255).astype(np.uint8)
+            image = Image.fromarray(array, 'L')
     # RGB graph
     elif array.shape[0] == 3:
         array = np.clip(array, 0, 255).astype('uint8')

@@ -1,66 +1,66 @@
 # src/cuhk_project/CNN/utils/visualization.py
 import matplotlib.pyplot as plt
-import torch
 import numpy as np
-from torch.nn import functional as F
+import torch
+import logging
 from torchvision.utils import make_grid
 from pathlib import Path
-from typing import Optional, Union, Tuple
+from typing import Optional, Union, Tuple, List
 from .debug_utils import ConvDebugger
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.gridspec import GridSpec
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 class ConvVisualizer:
-    """Modular convolutional visualization tool providing both static and class methods"""
+    """Enhanced convolutional visualization tool with optimized performance"""
+    
     @staticmethod
-    def _resize_grid(grid: torch.Tensor, max_dim: int = 1000) -> torch.Tensor:
-        """Resize grid with aspect ratio preservation"""
-        h, w = grid.shape[1], grid.shape[2]
-        if max(h, w) <= max_dim:
-            return grid
+    def _safe_normalize(tensor: torch.Tensor, method: str = 'histogram') -> torch.Tensor:
+        """Enhanced normalization with histogram equalization"""
+        tensor = tensor.float()
+        if tensor.numel() == 0:
+            return tensor
             
-        scale = min(max_dim/h, max_dim/w)  # Maintain width:height
-        new_h, new_w = int(h*scale), int(w*scale)
-        
-        return F.interpolate(
-            grid.unsqueeze(0),
-            size=(new_h, new_w),
-            mode='bilinear',
-            align_corners=False
-        ).squeeze(0)
-
-    @staticmethod
-    def _optimal_grid_params(feature_count: int, max_dim: int = 800) -> Tuple[int, int]:
-        """Calculate optimal grid parameters to avoid oversized outputs"""
-        nrow = min(8, feature_count)
-        while True:
-            cols = nrow
-            rows = (feature_count + nrow - 1) // nrow
-            est_height = rows * 64  # Height 64
-            est_width = cols * 64   # Width 64
+        if method == 'minmax':
+            min_val = tensor.min()
+            max_val = tensor.max()
+            if min_val == max_val:
+                return torch.zeros_like(tensor)
+            return (tensor - min_val) / (max_val - min_val)
             
-            if max(est_height, est_width) <= max_dim or nrow >= 16:
-                return nrow, max_dim
-            nrow += 2
-
+        elif method == 'histogram':  # Histogram equalization
+            # Move to CPU for histogram computation
+            tensor_cpu = tensor.cpu()
+            hist = torch.histc(tensor_cpu, bins=256)
+            cdf = hist.cumsum(0)
+            cdf_min = cdf.min()
+            
+            # Avoid division by zero
+            if cdf_min == cdf[-1]:
+                return torch.zeros_like(tensor)
+                
+            # Apply histogram equalization
+            cdf_normalized = (cdf - cdf_min) / (cdf[-1] - cdf_min)
+            return cdf_normalized[tensor_cpu.long()].to(tensor.device)
+    
     @staticmethod
-    def _render_grid_safely(features: torch.Tensor, nrow: int, max_dim: int) -> np.ndarray:
-        """Render grid in safe chunks"""
-        grid = make_grid(
-            features.unsqueeze(1),
-            nrow=nrow,
-            normalize=True,
-            pad_value=0.5,
-            scale_each=True
-        )
-       
-        if max(grid.shape[1:]) > max_dim:
-            scale = max_dim / max(grid.shape[1:])
-            grid = F.interpolate(
-                grid.unsqueeze(0),
-                scale_factor=scale,
-                mode='bilinear'
-            ).squeeze(0)
-        
-        return grid.permute(1, 2, 0).cpu().numpy()
+    def _handle_dimensions(tensor: torch.Tensor) -> torch.Tensor:
+        """Automatically handle batch and channel dimensions"""
+        # Remove batch dimension if present
+        if tensor.dim() == 4:
+            if tensor.size(0) == 1:
+                tensor = tensor.squeeze(0)
+            else:
+                logger.warning(f"Batch size >1 detected ({tensor.size(0)}). Using first sample.")
+                tensor = tensor[0]
+                
+        # Ensure correct channel position
+        if tensor.dim() == 3 and tensor.shape[0] not in [1, 3]:
+            tensor = tensor.permute(1, 2, 0)
+            
+        return tensor
 
     @staticmethod
     def visualize_conv_results(
@@ -74,120 +74,148 @@ class ConvVisualizer:
         nrow: int = 4,
         inspect_matrix: bool = False,
         cmap: str = 'viridis',
-        max_dim: int = 800, 
-        channels_per_pages: int = 16,
+        max_dim: int = 1200,
+        channels_per_page: int = 16,
+        normalization: str = 'histogram',
         **kwargs
-    ) -> Path:
-        """Visualize convolution input and output results
+    ) -> Union[Path, List[Path]]:
+        """
+        Visualize convolution input and output with optimized performance
         
         Args:
-            input_tensor: Input tensor [C,H,W]
-            output_tensor: Output feature maps [C,H,W]
-            kernel_size: Convolution kernel size used
+            input_tensor: Input tensor [B,C,H,W] or [C,H,W]
+            output_tensor: Output feature maps [B,C,H,W] or [C,H,W]
+            kernel_size: Convolution kernel size
             out_channels: Number of output channels
-            save_path: Save path (directories will be auto-created)
-            annotate: Whether to annotate numerical values
-            figsize: Figure size (adjusted for colorbar)
-            nrow: Number of feature maps per row
-            inspect_matrix: Whether to inspect matrix values
-            cmap: Colormap for feature visualization (default: 'viridis')
+            save_path: Save path (auto-creates directories)
+            normalization: Normalization method ('histogram' or 'minmax')
+            ... other parameters ...
         Returns:
-            Actual saved path
+            Saved file path(s)
         """
+        # Convert to Path object and create directories
         save_path = Path(save_path)
         save_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[DEBUG] Input stats - min: {input_tensor.min().item():.4f}, max: {input_tensor.max().item():.4f}")
-        print(f"[DEBUG] Output stats - min: {output_tensor.min().item():.4f}, max: {output_tensor.max().item():.4f}")
-    
-        if torch.all(output_tensor == 0):
-            raise ValueError("All output values are zero! Check layer weights and input.")
+        logger.info(f"Saving visualization to: {save_path}")
         
-        def safe_normalize(tensor):
-            tensor = tensor.float()  
-            min_val = tensor.min()
-            max_val = tensor.max()
-            if min_val == max_val:
-                return torch.zeros_like(tensor)
-            return (tensor - min_val) / (max_val - min_val)
-
+        # Handle tensor dimensions
+        input_tensor = ConvVisualizer._handle_dimensions(input_tensor)
+        output_tensor = ConvVisualizer._handle_dimensions(output_tensor)
+        
+        # Validate tensors
+        if torch.all(output_tensor == 0):
+            logger.error("All output values are zero! Check layer weights and input.")
+            raise ValueError("All output values are zero")
+        
+        # Log tensor statistics
+        logger.debug(f"Input stats: min={input_tensor.min().item():.4f}, max={input_tensor.max().item():.4f}")
+        logger.debug(f"Output stats: min={output_tensor.min().item():.4f}, max={output_tensor.max().item():.4f}")
+        
         saved_paths = []
-        total_pages = (out_channels + channels_per_pages - 1) // channels_per_pages
-
+        total_pages = (out_channels + channels_per_page - 1) // channels_per_page
+        
+        # Calculate global min/max for consistent colormap
+        global_min = output_tensor.min().item()
+        global_max = output_tensor.max().item()
+        
         for page in range(total_pages):
-            start = page * channels_per_pages
-            end = min((page + 1) * channels_per_pages, out_channels)
+            start = page * channels_per_page
+            end = min((page + 1) * channels_per_page, out_channels)
+            page_features = output_tensor[start:end]
             
-            fig, axes = plt.subplots(1, 2, figsize=figsize)
             try:
-                axes[0].imshow(input_tensor.permute(1, 2, 0).cpu().numpy())
-                axes[0].set_title(f'Input Image | Page {page+1}/{total_pages}')
-                axes[0].axis('off')
-
-                features = output_tensor[start:end]
-                normalized = torch.stack([safe_normalize(ch) for ch in features])
+                # === Create main figure with GridSpec for better layout control ===
+                fig = plt.figure(figsize=figsize, constrained_layout=True)
+                gs = GridSpec(1, 2, figure=fig, width_ratios=[1, 2])
                 
-                grid = make_grid(
-                    normalized.unsqueeze(1),
-                    nrow=min(nrow, channels_per_pages),
-                    pad_value=0.5,
-                    normalize=False
-                )
-
-                if max(grid.shape[1:]) > max_dim:
-                    grid = F.interpolate(
-                        grid.unsqueeze(0),
-                        size=(max_dim, max_dim),
-                        mode='bilinear'
-                    ).squeeze(0)
-
-                im = axes[1].imshow(
-                    grid.permute(1, 2, 0).cpu().numpy(),
-                    cmap=cmap,
-                    vmin=normalized.min().item(),
-                    vmax=normalized.max().item()
-                )
-                cbar = fig.colorbar(im, ax=axes[1])
-                cbar.set_label('Normalized Activation')
-                axes[1].set_title(f'Channels {start}-{end-1} (k={kernel_size})')
-                axes[1].axis('off')
-
+                ax1 = fig.add_subplot(gs[0])
+                ax2 = fig.add_subplot(gs[1])
+                
+                fig.suptitle(f'Convolution Visualization (Page {page+1}/{total_pages})', fontsize=14)
+                
+                # === Plot input image ===
+                input_img = input_tensor.permute(1, 2, 0).cpu().numpy()
+                ax1.imshow(input_img)
+                ax1.set_title(f'Input Image\nShape: {input_tensor.shape}')
+                ax1.axis('off')
+                
+                # === Create feature grid ===
+                # Calculate grid layout
+                n_features = end - start
+                ncols = min(nrow, n_features)
+                nrows = (n_features + ncols - 1) // ncols
+                
+                # Create grid figure with constrained layout
+                grid_fig = plt.figure(figsize=(figsize[0]*0.9, figsize[1]*0.7), 
+                                     constrained_layout=True)
+                
+                # Create grid axes
+                grid_axes = grid_fig.subplots(nrows=nrows, ncols=ncols)
+                
+                # Flatten axes if necessary
+                if isinstance(grid_axes, np.ndarray):
+                    grid_axes = grid_axes.flatten()
+                else:
+                    grid_axes = [grid_axes]
+                
+                # Plot each feature map
+                im = None
+                for idx, (ax, feature) in enumerate(zip(grid_axes, page_features)):
+                    # Apply normalization
+                    normalized = ConvVisualizer._safe_normalize(feature, normalization)
+                    
+                    # Plot with consistent colormap range
+                    im = ax.imshow(
+                        normalized.cpu().numpy(),
+                        cmap=cmap,
+                        vmin=global_min,
+                        vmax=global_max
+                    )
+                    ax.set_title(f'Ch {start+idx}', fontsize=9)
+                    ax.axis('off')
+                
+                # Remove empty axes
+                for ax in grid_axes[n_features:]:
+                    grid_fig.delaxes(ax)
+                
+                # Add colorbar to grid
+                if im is not None:
+                    grid_fig.colorbar(im, ax=grid_axes, fraction=0.02, pad=0.04)
+                
+                # Render grid to memory buffer
+                canvas = FigureCanvasAgg(grid_fig)
+                canvas.draw()
+                grid_img = np.array(canvas.renderer.buffer_rgba())
+                plt.close(grid_fig)
+                
+                # === Plot feature grid ===
+                ax2.imshow(grid_img)
+                ax2.set_title(f'Feature Maps {start}-{end-1}\nKernel: {kernel_size}x{kernel_size}')
+                ax2.axis('off')
+                
+                # Add annotation if requested
                 if annotate:
-                    ConvDebugger.annotate_image(axes[0], input_tensor)
-                    ConvDebugger.annotate_image(axes[1], grid)
-
-                page_path = save_path.parent / f"{save_path.stem}_page{page+1}{save_path.suffix}"
-                fig.tight_layout()
-                fig.savefig(page_path, bbox_inches='tight', dpi=120)
-                saved_paths.append(page_path)
-
+                    ConvDebugger.annotate_image(ax1, input_tensor)
+                
+                # === Save page ===
+                page_save_path = save_path.parent / f"{save_path.stem}_page{page+1}{save_path.suffix}"
+                fig.savefig(page_save_path, bbox_inches='tight', dpi=150)
+                plt.close(fig)
+                
+                saved_paths.append(page_save_path)
+                logger.info(f"Saved visualization page {page+1} to: {page_save_path}")
+                
             except Exception as e:
-                plt.close(fig)
-                raise RuntimeError(f"Page {page+1} visualization failed: {str(e)}") from e
-            finally:
-                plt.close(fig)
-
-        return saved_paths if total_pages > 1 else saved_paths[0]
-
-    @staticmethod
-    def _plot_tensor(ax, tensor: torch.Tensor, title: str, cmap: str = None) -> None:
-        """Internal tensor plotting method with enhanced visualization"""
-        tensor = tensor.detach().cpu()
-        if tensor.dim() == 3 and tensor.shape[0] == 3:  # RGB
-            ax.imshow(tensor.permute(1, 2, 0).numpy())
-        else:  # Grayscale or feature maps
-            im = ax.imshow(
-                tensor.squeeze().numpy(),
-                cmap=cmap or 'viridis',
-                vmin=tensor.min().item(),
-                vmax=tensor.max().item()
-            )
-        ax.set_title(title)
-        ax.axis('off')
+                logger.error(f"Page {page+1} visualization failed: {str(e)}")
+                plt.close('all')
+                raise
+        
+        return saved_paths[0] if len(saved_paths) == 1 else saved_paths
 
     @classmethod
     def create_visualizer(cls, config: Optional[dict] = None):
-        """Factory method for configurable visualizer creation"""
+        """Factory method for configurable visualizer"""
         return cls(config or {})
 
-# Maintain backward compatibility with original function interface
+# Backward compatibility alias
 visualize_conv_results = ConvVisualizer.visualize_conv_results
