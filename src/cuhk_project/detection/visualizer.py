@@ -38,21 +38,37 @@ class DetectionVisualizer:
         logger.info(f"Initializing visualizer. Output will be saved to {self.output_dir}")
     
     def denormalize_bbox(self, bbox, width, height):
-        """将归一化的边界框坐标转换为像素坐标"""
-        # 确保输入为Python原生float类型
-        cx, cy, w, h = map(float, bbox)
-        x = cx * float(width)
-        y = cy * float(height)
-        w = w * float(width)
-        h = h * float(height)
-        return (x - w/2, y - h/2, w, h)
+        """更安全的尺寸转换"""
+        try:
+            # 确保尺寸为Python原生类型
+            width, height = float(width), float(height)
+            cx, cy, w, h = map(float, bbox)
+            
+            # 计算绝对坐标
+            x = cx * width
+            y = cy * height
+            w = w * width
+            h = h * height
+            
+            # 边界检查
+            x = max(0, min(x, width))
+            y = max(0, min(y, height))
+            w = min(w, width - x)
+            h = min(h, height - y)
+            
+            return (x - w/2, y - h/2, w, h)
+        except Exception as e:
+            logger.error(f"Bbox denormalize failed: {e}")
+            return (0, 0, 0, 0)
 
     def visualize_sample(self, idx: int):
         """可视化单个样本的预测结果"""
         try:
             # 获取样本
             image, target = self.dataset[idx]
-            orig_height, orig_width = target['orig_size'].tolist()
+            orig_height, orig_width = map(int, target['orig_size'].tolist())
+            if orig_height <= 0 or orig_width <= 0:
+                raise ValueError(f"Invalid image size: {orig_width}x{orig_height}")
             
             # 转换为CHW格式并验证
             image = image.unsqueeze(0).to(self.device)

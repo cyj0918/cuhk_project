@@ -34,10 +34,10 @@ def main():
     # 创建数据集
     try:
         train_dataset = YOLOMFDataset(
-            base_dir=args.data_dir, split="train", target_size=(416, 416)
+            base_dir=args.data_dir, split="train", target_size=(512, 96)
         )
         val_dataset = YOLOMFDataset(
-            base_dir=args.data_dir, split="val", target_size=(416, 416)
+            base_dir=args.data_dir, split="val", target_size=(512, 96)
         )
         
         logger.info(f"Train dataset size: {len(train_dataset)}")

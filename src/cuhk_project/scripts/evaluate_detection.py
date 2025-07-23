@@ -35,7 +35,7 @@ def main():
     # 创建测试数据集
     try:
         test_dataset = YOLOMFDataset(
-            base_dir=args.data_dir, split="test", target_size=(416, 416))
+            base_dir=args.data_dir, split="test", target_size=(512, 96))
         logger.info(f"Test dataset size: {len(test_dataset)}")
     except Exception as e:
         logger.error(f"Failed to create test dataset: {str(e)}")

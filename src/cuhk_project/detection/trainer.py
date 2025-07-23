@@ -1,6 +1,7 @@
 import os
 import torch
 import torch.optim as optim
+import numpy as np
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 from cuhk_project.utils.logger import logger
@@ -10,6 +11,20 @@ from .dataset import YOLOMFDataset
 class DetectionTrainer:
     """目标检测模型训练器"""
     
+    @staticmethod
+    def collate_fn(batch):
+        """确保返回统一格式的批数据"""
+        images = [item[0] for item in batch]
+        targets = [item[1] for item in batch]
+        
+        # 确保images是tensor
+        if isinstance(images[0], torch.Tensor):
+            images = torch.stack(images)
+        else:
+            images = torch.tensor(np.stack(images))
+            
+        return images, targets
+        
     def __init__(self, 
                  model: SimpleDetectionModel, 
                  train_dataset: YOLOMFDataset,
@@ -43,10 +58,16 @@ class DetectionTrainer:
         
         # 数据加载器
         self.train_loader = DataLoader(
-            train_dataset, batch_size=batch_size, shuffle=True
+            train_dataset, 
+            batch_size=batch_size, 
+            shuffle=True,
+            collate_fn=self.collate_fn
         )
         self.val_loader = DataLoader(
-            val_dataset, batch_size=batch_size, shuffle=False
+            val_dataset, 
+            batch_size=batch_size, 
+            shuffle=False,
+            collate_fn=self.collate_fn
         )
         
         # 优化器
@@ -60,34 +81,70 @@ class DetectionTrainer:
             f"Trainer initialized: batch_size={batch_size}, lr={learning_rate}, "
             f"epochs={num_epochs}, device={device}"
         )
-    
+
+
     def train_epoch(self, epoch: int) -> dict:
         """训练一个epoch"""
         self.model.train()
         total_loss = 0.0
         bbox_loss = 0.0
         cls_loss = 0.0
+        max_boxes = 10
         
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}")
         
-        for images, targets in progress_bar:
+        for batch in progress_bar:
+            # 安全解包批数据
+            if isinstance(batch, (list, tuple)) and len(batch) == 2:
+                images, targets = batch
+            else:
+                raise ValueError(f"Unexpected batch format: {type(batch)}")
+            
             images = images.to(self.device)
             
-            # 直接使用批量目标张量
-            gt_boxes = targets['boxes'][:, 0, :].to(self.device)  # 取每个样本的第一个边界框
-            gt_labels = targets['labels'][:, 0].float().to(self.device).unsqueeze(1)  # 取每个样本的第一个标签
+            # 处理批量目标数据
+            max_boxes = 10  # 最大边界框数量
+            gt_boxes = []
+            gt_labels = []
+            
+            for target in targets:
+                # 获取所有有效边界框
+                valid_boxes = target['boxes'][target['boxes'].sum(dim=1) > 0]
+                valid_labels = target['labels'][:len(valid_boxes)].float()
+                
+                # 填充或截断到max_boxes
+                if len(valid_boxes) > max_boxes:
+                    boxes = valid_boxes[:max_boxes]
+                    labels = valid_labels[:max_boxes]
+                else:
+                    # 填充零边界框
+                    pad_size = max_boxes - len(valid_boxes)
+                    boxes = torch.cat([
+                        valid_boxes,
+                        torch.zeros((pad_size, 4))
+                    ])
+                    labels = torch.cat([
+                        valid_labels,
+                        torch.zeros(pad_size)
+                    ])
+                
+                gt_boxes.append(boxes)
+                gt_labels.append(labels)
+            
+            gt_boxes = torch.stack(gt_boxes).to(self.device)  # [batch, max_boxes, 4]
+            gt_labels = torch.stack(gt_labels).to(self.device).unsqueeze(-1)  # [batch, max_boxes, 1]
             
             # 前向传播
             self.optimizer.zero_grad()
-            outputs = self.model(images)
+            outputs = self.model(images)  # [batch_size, 5]
             
-            # 拆分输出
-            pred_boxes = outputs[:, :4]
-            pred_cls = outputs[:, 4]
+            # 拆分输出并扩展维度
+            pred_boxes = outputs[:, :4].unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
+            pred_cls = outputs[:, 4].unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
             
             # 计算损失
             loss_bbox = self.bbox_loss_fn(pred_boxes, gt_boxes)
-            loss_cls = self.cls_loss_fn(pred_cls.unsqueeze(1), gt_labels)
+            loss_cls = self.cls_loss_fn(pred_cls, gt_labels.squeeze(-1))  # 去掉最后一个维度
             loss = loss_bbox + loss_cls
             
             # 反向传播
@@ -124,19 +181,53 @@ class DetectionTrainer:
         cls_loss = 0.0
         
         with torch.no_grad():
-            for images, targets in self.val_loader:
+            for batch in self.val_loader:
+                # 安全解包批数据
+                if isinstance(batch, (list, tuple)) and len(batch) == 2:
+                    images, targets = batch
+                else:
+                    raise ValueError(f"Unexpected batch format: {type(batch)}")
+                
                 images = images.to(self.device)
                 
-                # 直接使用批量目标张量
-                gt_boxes = targets['boxes'][:, 0, :].to(self.device)  # 取每个样本的第一个边界框
-                gt_labels = targets['labels'][:, 0].float().to(self.device).unsqueeze(1)  # 取每个样本的第一个标签
+                # 处理批量目标数据
+                max_boxes = 10  # 最大边界框数量
+                gt_boxes = []
+                gt_labels = []
+                
+                for target in targets:
+                    # 获取所有有效边界框
+                    valid_boxes = target['boxes'][target['boxes'].sum(dim=1) > 0]
+                    valid_labels = target['labels'][:len(valid_boxes)].float()
+                    
+                    # 填充或截断到max_boxes
+                    if len(valid_boxes) > max_boxes:
+                        boxes = valid_boxes[:max_boxes]
+                        labels = valid_labels[:max_boxes]
+                    else:
+                        # 填充零边界框
+                        pad_size = max_boxes - len(valid_boxes)
+                        boxes = torch.cat([
+                            valid_boxes,
+                            torch.zeros((pad_size, 4))
+                        ])
+                        labels = torch.cat([
+                            valid_labels,
+                            torch.zeros(pad_size)
+                        ])
+                    
+                    gt_boxes.append(boxes)
+                    gt_labels.append(labels)
+                
+                gt_boxes = torch.stack(gt_boxes).to(self.device)  # [batch, max_boxes, 4]
+                gt_labels = torch.stack(gt_labels).to(self.device).unsqueeze(-1)  # [batch, max_boxes, 1]
                 
                 # 前向传播
-                outputs = self.model(images)
+                outputs = self.model(images)  # [batch_size, 5]
                 
-                # 拆分输出
-                pred_boxes = outputs[:, :4]
-                pred_cls = outputs[:, 4]
+                # 拆分输出并扩展维度
+                pred_boxes = outputs[:, :4].unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
+                pred_cls = outputs[:, 4].unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
                 
                 # 计算损失
                 loss_bbox = self.bbox_loss_fn(pred_boxes, gt_boxes)

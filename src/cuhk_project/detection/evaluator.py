@@ -111,24 +111,35 @@ class DetectionEvaluator:
         if not hasattr(self, '_collate_fn'):
             self._collate_fn = lambda x: tuple(zip(*x))
             
-    def _validate_boxes(self, boxes):
+    def _validate_boxes(self, boxes) -> bool:
         """验证边界框坐标是否有效"""
-        if boxes is None or len(boxes) == 0:
+        # 统一转换为numpy数组处理
+        if isinstance(boxes, torch.Tensor):
+            boxes = boxes.cpu().numpy()
+        
+        # 检查空数组
+        if boxes.size == 0:
             return False
             
         for box in boxes:
-            # 检查是否为填充框 [0,0,0,0]
-            if np.all(box == 0):
-                continue
-                
-            # 检查坐标范围 (0-1)
-            if any(x < 0 or x > 1 for x in box):
-                logger.warning(f"Invalid box coordinates:", box.tolist())
+            # 确保转换为Python float类型
+            cx, cy, w, h = map(float, box[:4])
+            
+            # 检查坐标范围
+            if not (0 <= cx <= 1 and 0 <= cy <= 1):
+                logger.warning(f"Invalid center coordinates: ({cx:.4f}, {cy:.4f})")
                 return False
                 
-            # 检查宽高有效性
-            if box[2] <= 0 or box[3] <= 0:
-                logger.warning(f"Invalid box dimensions:", box.tolist())
+            # 检查宽高
+            if w <= 0 or h <= 0:
+                logger.warning(f"Invalid box dimensions: width={w:.4f}, height={h:.4f}")
+                return False
+                
+            # 检查边界
+            x1, y1 = cx - w/2, cy - h/2
+            x2, y2 = cx + w/2, cy + h/2
+            if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
+                logger.warning(f"Invalid box bounds: ({x1:.4f}, {y1:.4f}, {x2:.4f}, {y2:.4f})")
                 return False
                 
         return True

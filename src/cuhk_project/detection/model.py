@@ -41,33 +41,21 @@ class SimpleDetectionModel(nn.Module):
         )
     
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        """前向传播
-        返回:
-            boxes: 边界框坐标 [batch_size, 4] (cx, cy, w, h)
-            scores: 类别置信度 [batch_size, 1]
-        """
-
-        # 1. 特征提取保持不变
         features = self.conv(x)
         pooled = torch.mean(features, dim=[2, 3])
-
-        # 2. 预测边界框和类别
+        
         bbox = self.fc_bbox(pooled)  # [batch_size, 4]
         cls_prob = torch.sigmoid(self.fc_class(pooled))  # [batch_size, 1]
+        
+        return bbox, cls_prob  # 明确返回两个张量
 
-        # 3. 拆分输出
-        # 原实现: return torch.cat([bbox, cls_prob], dim=1)
-        # 修改为:
-        boxes = bbox  # 直接使用bbox预测结果 [batch_size, 4]
-        scores = cls_prob  # 使用sigmoid后的类别概率 [batch_size, 1]
 
-        return boxes, scores
-
-    
     def predict(self, x):
         # 确保输出标准化格式
-        boxes, scores = self.forward(x)
+        with torch.no_grad():
+            boxes, scores = self.forward(x)  # 获取原始输出
+            
         return {
-            'boxes': boxes.clamp(0, 1),  # 强制归一化
-            'scores': scores.sigmoid()    # 确保分数在0-1
+            'boxes': boxes.clamp(0, 1),  # 强制归一化 [batch,4]
+            'scores': scores.squeeze(1)   # 确保分数在0-1 [batch]
         }
