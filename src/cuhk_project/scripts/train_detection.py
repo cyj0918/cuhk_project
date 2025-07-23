@@ -1,4 +1,4 @@
-# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --save-path models/detection_model_1.pth
+# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --save-path models/test_1.pth
 
 import argparse
 from cuhk_project.utils.logger import configure_logging
