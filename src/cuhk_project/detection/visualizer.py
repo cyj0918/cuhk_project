@@ -16,7 +16,7 @@ class DetectionVisualizer:
                  model: SimpleDetectionModel,
                  dataset: YOLOMFDataset,
                  output_dir: str = "output/visualizations",
-                 device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+                 device: str = "mps" if torch.backends.mps.is_available() else "cpu"):
         """
         初始化可视化器
         

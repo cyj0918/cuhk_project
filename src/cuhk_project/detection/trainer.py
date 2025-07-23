@@ -16,7 +16,7 @@ class DetectionTrainer:
                  batch_size: int = 4,
                  learning_rate: float = 0.001,
                  num_epochs: int = 10,
-                 device: str = "cuda" if torch.cuda.is_available() else "cpu"):
+                 device: str = "mps" if torch.backends.mps.is_available() else "cpu"):
         """
         初始化训练器
         

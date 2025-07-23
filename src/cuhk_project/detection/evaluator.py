@@ -13,7 +13,7 @@ class DetectionEvaluator:
                  model: SimpleDetectionModel,
                  test_dataset: YOLOMFDataset,
                  batch_size: int = 4,
-                 device: str = "cuda" if torch.cuda.is_available() else "cpu",
+                 device: str = "mps" if torch.backends.mps.is_available() else "cpu",
                  iou_threshold: float = 0.5):
         """
         初始化评估器
