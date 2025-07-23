@@ -1,3 +1,4 @@
+from typing import Tuple
 import torch
 import torch.nn as nn
 from cuhk_project.CNN.processors.conv import Conv
@@ -39,26 +40,34 @@ class SimpleDetectionModel(nn.Module):
             f"config={conv_config}"
         )
     
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播"""
-        # 卷积特征提取
+    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """前向传播
+        返回:
+            boxes: 边界框坐标 [batch_size, 4] (cx, cy, w, h)
+            scores: 类别置信度 [batch_size, 1]
+        """
+
+        # 1. 特征提取保持不变
         features = self.conv(x)
-        
-        # 全局平均池化
         pooled = torch.mean(features, dim=[2, 3])
-        
-        # 预测边界框和类别
-        bbox = self.fc_bbox(pooled)
-        cls_prob = torch.sigmoid(self.fc_class(pooled))
-        
-        # 组合输出 [batch_size, 5] (cx, cy, w, h, confidence)
-        return torch.cat([bbox, cls_prob], dim=1)
+
+        # 2. 预测边界框和类别
+        bbox = self.fc_bbox(pooled)  # [batch_size, 4]
+        cls_prob = torch.sigmoid(self.fc_class(pooled))  # [batch_size, 1]
+
+        # 3. 拆分输出
+        # 原实现: return torch.cat([bbox, cls_prob], dim=1)
+        # 修改为:
+        boxes = bbox  # 直接使用bbox预测结果 [batch_size, 4]
+        scores = cls_prob  # 使用sigmoid后的类别概率 [batch_size, 1]
+
+        return boxes, scores
+
     
-    def predict(self, x: torch.Tensor) -> dict:
-        """预测接口"""
-        with torch.no_grad():
-            output = self.forward(x)
-            return {
-                'boxes': output[:, :4],
-                'scores': output[:, 4]
-            }
+    def predict(self, x):
+        # 确保输出标准化格式
+        boxes, scores = self.forward(x)
+        return {
+            'boxes': boxes.clamp(0, 1),  # 强制归一化
+            'scores': scores.sigmoid()    # 确保分数在0-1
+        }

@@ -93,6 +93,7 @@ class YOLOMFDataset(Dataset):
     def _parse_annotation(self, annotation_path: Path) -> List[Dict]:
         """解析YOLO格式标注文件"""
         annotations = []
+        logger.debug(f"Loaded {len(annotations)} boxes from {annotation_path}")
         try:
             with open(annotation_path, 'r') as f:
                 for line_num, line in enumerate(f, 1):
@@ -189,5 +190,8 @@ class YOLOMFDataset(Dataset):
         # 应用数据增强
         if self.transform:
             image, target = self.transform(image, target)
-            
+        
+        if not isinstance(image, torch.Tensor) or not isinstance(target, dict):
+            raise ValueError("Dataset must return (tensor, dict) pair")
+    
         return image, target

@@ -39,59 +39,73 @@ class DetectionVisualizer:
     
     def denormalize_bbox(self, bbox, width, height):
         """将归一化的边界框坐标转换为像素坐标"""
-        cx, cy, w, h = bbox
-        x = cx * width
-        y = cy * height
-        w = w * width
-        h = h * height
+        # 确保输入为Python原生float类型
+        cx, cy, w, h = map(float, bbox)
+        x = cx * float(width)
+        y = cy * float(height)
+        w = w * float(width)
+        h = h * float(height)
         return (x - w/2, y - h/2, w, h)
-    
+
     def visualize_sample(self, idx: int):
         """可视化单个样本的预测结果"""
-        # 获取样本
-        image, target = self.dataset[idx]
-        orig_height, orig_width = target['orig_size'].tolist()
-        
-        # 转换为CHW格式
-        image = image.unsqueeze(0).to(self.device)
-        
-        # 模型预测
-        with torch.no_grad():
-            prediction = self.model.predict(image)
-        
-        # 转换为numpy数组
-        image_np = image.squeeze(0).cpu().numpy().transpose(1, 2, 0)
-        gt_boxes = target['boxes'].cpu().numpy()
-        pred_boxes = prediction['boxes'].cpu().numpy()
-        pred_scores = prediction['scores'].cpu().numpy()
-        
-        # 创建图像
-        fig, ax = plt.subplots(1, figsize=(10, 10))
-        ax.imshow(image_np)
-        
-        # 绘制真实边界框 (绿色)
-        for box in gt_boxes:
-            x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
-            rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='g', facecolor='none')
-            ax.add_patch(rect)
-        
-        # 绘制预测边界框 (红色) 并显示置信度
-        for i, box in enumerate(pred_boxes):
-            x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
-            rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='r', facecolor='none')
-            ax.add_patch(rect)
-            ax.text(x, y, f"{pred_scores[i]:.2f}", color='red', fontsize=12, 
-                    bbox=dict(facecolor='white', alpha=0.7))
-        
-        # 添加标题
-        plt.title(f"Sample {idx} - GT: Green, Pred: Red")
-        
-        # 保存图像
-        output_path = self.output_dir / f"sample_{idx}.png"
-        plt.savefig(output_path, bbox_inches='tight')
-        plt.close()
-        
-        return output_path
+        try:
+            # 获取样本
+            image, target = self.dataset[idx]
+            orig_height, orig_width = target['orig_size'].tolist()
+            
+            # 转换为CHW格式并验证
+            image = image.unsqueeze(0).to(self.device)
+            if image.dim() != 4 or image.size(1) not in [1, 3]:
+                raise ValueError(f"Invalid image shape: {image.shape}")
+                
+            # 模型预测
+            with torch.no_grad():
+                prediction = self.model.predict(image)
+                if not all(k in prediction for k in ['boxes', 'scores']):
+                    raise ValueError("Invalid prediction format")
+            
+            # 转换为numpy数组并验证
+            image_np = image.squeeze(0).cpu().numpy()
+            if image_np.ndim == 3:  # CHW转HWC
+                image_np = image_np.transpose(1, 2, 0)
+                
+            gt_boxes = target['boxes'].cpu().numpy()
+            pred_boxes = prediction['boxes'].cpu().numpy()
+            pred_scores = prediction['scores'].cpu().numpy()
+            
+            # 验证数组形状
+            assert isinstance(image_np, np.ndarray), "Image must be numpy array"
+            assert pred_boxes.shape[0] == pred_scores.shape[0], "Boxes and scores count mismatch"
+            
+            # 创建图像和可视化
+            fig, ax = plt.subplots(1, figsize=(10, 10))
+            ax.imshow(image_np)
+            
+            # 绘制真实边界框 (绿色)
+            for box in gt_boxes:
+                x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
+                rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='g', facecolor='none')
+                ax.add_patch(rect)
+            
+            # 绘制预测边界框 (红色)
+            for i, box in enumerate(pred_boxes):
+                x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
+                rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='r', facecolor='none')
+                ax.add_patch(rect)
+                ax.text(x, y, f"{float(pred_scores[i]):.2f}", color='red', fontsize=12,
+                        bbox=dict(facecolor='white', alpha=0.7))
+            
+            plt.title(f"Sample {idx} - GT: Green, Pred: Red")
+            output_path = self.output_dir / f"sample_{idx}.png"
+            plt.savefig(output_path, bbox_inches='tight')
+            plt.close()
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error visualizing sample {idx}: {str(e)}")
+            return None
+
     
     def visualize_dataset(self, num_samples: int = 10):
         """可视化数据集中的多个样本"""

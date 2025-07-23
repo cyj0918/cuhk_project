@@ -1,3 +1,4 @@
+# python -m src.cuhk_project.scripts.evaluate_detection --data-dir data/yolo_mf_dataset --batch-size 1 --out-channels 16 --model-path models/test_1.pth --output-dir output/test_1
 import argparse
 import torch
 from cuhk_project.utils.logger import logger
