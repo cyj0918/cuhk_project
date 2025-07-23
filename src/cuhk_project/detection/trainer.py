@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
@@ -186,7 +187,10 @@ class DetectionTrainer:
             # 保存最佳模型
             if val_metrics['total_loss'] < best_val_loss:
                 best_val_loss = val_metrics['total_loss']
-                torch.save(self.model.state_dict(), save_path)
+                if save_path:
+                    save_dir = os.path.dirname(save_path)
+                    os.makedirs(save_dir, exist_ok=True)
+                    torch.save(self.model.state_dict(), save_path)
                 logger.info(f"Saved best model to {save_path} with val loss {best_val_loss:.4f}")
         
         logger.info("Training completed!")
