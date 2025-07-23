@@ -1,4 +1,3 @@
-# Dataset Loading
 import os
 import torch
 from torch.utils.data import Dataset
@@ -9,7 +8,7 @@ from typing import List, Dict, Tuple, Optional
 from cuhk_project.utils.logger import configure_logging
 
 class YOLOMFDataset(Dataset):
-    """YOLO格式目标检测数据集加载器，匹配您的数据结构"""
+    """YOLO格式目标检测数据集加载器"""
     
     def __init__(self, 
                  base_dir: str = "data/yolo_mf_dataset",
@@ -69,7 +68,7 @@ class YOLOMFDataset(Dataset):
         valid_extensions = {'.png', '.jpg', '.jpeg'}
         
         # 扫描图像目录
-        for img_path in img_dir.glob('*'):
+        for img_path in img_dir.iterdir():
             if img_path.suffix.lower() not in valid_extensions:
                 continue
                 
@@ -149,7 +148,7 @@ class YOLOMFDataset(Dataset):
         # 加载图像
         try:
             image = Image.open(sample['image_path']).convert('RGB')
-            orig_size = image.size  # (width, height)
+            orig_width, orig_height = image.size
             
             # 调整大小并归一化
             image = image.resize(self.target_size)
@@ -174,7 +173,7 @@ class YOLOMFDataset(Dataset):
             'boxes': torch.tensor(boxes, dtype=torch.float32),
             'labels': torch.tensor(labels, dtype=torch.int64),
             'image_id': torch.tensor([idx]),
-            'orig_size': torch.tensor([orig_size[1], orig_size[0]])  # (height, width)
+            'orig_size': torch.tensor([orig_height, orig_width])
         }
         
         # 应用数据增强
