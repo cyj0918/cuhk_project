@@ -4,6 +4,7 @@ import torch.nn as nn
 import math
 from typing import Dict
 from .base import Base
+from cuhk_project.utils.logger import logger
 
 class Conv(Base):
     """Standard Conv processor, implementation of 2D convolution"""
@@ -19,7 +20,8 @@ class Conv(Base):
             'padding'
         ]
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict = None, **kwargs):
+        # Handle both config styles
         """Initialize Conv layer
         
         Args:
@@ -33,6 +35,11 @@ class Conv(Base):
                 dilation: Dilation parameter (default 1)
                 groups: Grouping parameter (default 1)
         """
+        if config is None:
+            config = kwargs
+        else:
+            config.update(kwargs)
+
         super().__init__(config)
         
         # Initialize Conv layer
@@ -49,7 +56,7 @@ class Conv(Base):
         self.bn = nn.BatchNorm2d(config['out_channels']) # Add the BatchNorm layer
         self.act = nn.SiLU() # Add the SiLU function
         self._init_weights()
-        self.logger.info(f"Initialized Conv2d layer: {self.conv}")
+        logger.info(f"Initialized Conv2d layer: {self.conv}")
 
     def _init_weights(self):
         """Kaiming initialize conv weight like YOLO"""
@@ -58,7 +65,7 @@ class Conv(Base):
             nn.init.zeros_(self.conv.bias)  # YOLO initial bias as 0
 
 
-    def process(self, image: torch.Tensor) -> torch.Tensor:
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         """Do the Conv process
         
         Args:
@@ -79,7 +86,7 @@ class Conv(Base):
                 f"got {image.size(1)}"
             )
             
-        self.logger.info(
+        logger.info(
             f"Processing image with shape {image.shape} "
             f"using kernel {self.conv.kernel_size}"
         )

@@ -2,7 +2,7 @@ import torch
 import torch.optim as optim
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger
 from .model import SimpleDetectionModel
 from .dataset import YOLOMFDataset
 
@@ -38,8 +38,7 @@ class DetectionTrainer:
         self.device = device
         
         # 初始化logger
-        self.logger = configure_logging(module="DetectionTrainer")
-        self.logger.info("Initializing detection trainer")
+        logger.info("Initializing detection trainer")
         
         # 数据加载器
         self.train_loader = DataLoader(
@@ -56,7 +55,7 @@ class DetectionTrainer:
         self.bbox_loss_fn = torch.nn.MSELoss()  # 边界框坐标损失
         self.cls_loss_fn = torch.nn.BCEWithLogitsLoss()  # 分类损失
         
-        self.logger.info(
+        logger.info(
             f"Trainer initialized: batch_size={batch_size}, lr={learning_rate}, "
             f"epochs={num_epochs}, device={device}"
         )
@@ -73,21 +72,9 @@ class DetectionTrainer:
         for images, targets in progress_bar:
             images = images.to(self.device)
             
-            # 准备目标张量
-            batch_boxes = []
-            batch_labels = []
-            for target in targets:
-                if len(target['boxes']) > 0:
-                    # 取第一个边界框作为目标（简化版）
-                    batch_boxes.append(target['boxes'][0])
-                    batch_labels.append(target['labels'][0].float())
-                else:
-                    # 如果没有边界框，使用零填充
-                    batch_boxes.append(torch.zeros(4))
-                    batch_labels.append(torch.tensor(0.0))
-            
-            gt_boxes = torch.stack(batch_boxes).to(self.device)
-            gt_labels = torch.stack(batch_labels).to(self.device).unsqueeze(1)
+            # 直接使用批量目标张量
+            gt_boxes = targets['boxes'][:, 0, :].to(self.device)  # 取每个样本的第一个边界框
+            gt_labels = targets['labels'][:, 0].float().to(self.device).unsqueeze(1)  # 取每个样本的第一个标签
             
             # 前向传播
             self.optimizer.zero_grad()
@@ -139,19 +126,9 @@ class DetectionTrainer:
             for images, targets in self.val_loader:
                 images = images.to(self.device)
                 
-                # 准备目标张量
-                batch_boxes = []
-                batch_labels = []
-                for target in targets:
-                    if len(target['boxes']) > 0:
-                        batch_boxes.append(target['boxes'][0])
-                        batch_labels.append(target['labels'][0].float())
-                    else:
-                        batch_boxes.append(torch.zeros(4))
-                        batch_labels.append(torch.tensor(0.0))
-                
-                gt_boxes = torch.stack(batch_boxes).to(self.device)
-                gt_labels = torch.stack(batch_labels).to(self.device).unsqueeze(1)
+                # 直接使用批量目标张量
+                gt_boxes = targets['boxes'][:, 0, :].to(self.device)  # 取每个样本的第一个边界框
+                gt_labels = targets['labels'][:, 0].float().to(self.device).unsqueeze(1)  # 取每个样本的第一个标签
                 
                 # 前向传播
                 outputs = self.model(images)
@@ -183,14 +160,14 @@ class DetectionTrainer:
     
     def train(self, save_path: str = "models/detection_model.pth"):
         """训练模型并保存"""
-        self.logger.info("Starting training...")
+        logger.info("Starting training...")
         
         best_val_loss = float('inf')
         
         for epoch in range(self.num_epochs):
             # 训练
             train_metrics = self.train_epoch(epoch)
-            self.logger.info(
+            logger.info(
                 f"Epoch {epoch+1}/{self.num_epochs} - "
                 f"Train Loss: {train_metrics['total_loss']:.4f} "
                 f"(Bbox: {train_metrics['bbox_loss']:.4f}, "
@@ -199,7 +176,7 @@ class DetectionTrainer:
             
             # 验证
             val_metrics = self.validate()
-            self.logger.info(
+            logger.info(
                 f"Epoch {epoch+1}/{self.num_epochs} - "
                 f"Val Loss: {val_metrics['total_loss']:.4f} "
                 f"(Bbox: {val_metrics['bbox_loss']:.4f}, "
@@ -210,6 +187,6 @@ class DetectionTrainer:
             if val_metrics['total_loss'] < best_val_loss:
                 best_val_loss = val_metrics['total_loss']
                 torch.save(self.model.state_dict(), save_path)
-                self.logger.info(f"Saved best model to {save_path} with val loss {best_val_loss:.4f}")
+                logger.info(f"Saved best model to {save_path} with val loss {best_val_loss:.4f}")
         
-        self.logger.info("Training completed!")
+        logger.info("Training completed!")

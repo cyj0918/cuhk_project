@@ -2,10 +2,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Optional, Union
 import torch
+import torch.nn as nn
 from cuhk_project import __version__ 
 from cuhk_project.utils.logger import configure_logging
 
-class Base(ABC):
+class Base(nn.Module, ABC):
     """Abstract method of all processors"""
     def __init__(self, config: dict):
         """Initialize the processor
@@ -13,6 +14,7 @@ class Base(ABC):
         Args:
             config: Dictionary of processor
         """
+        super().__init__()
         self.config = config
         self.logger = configure_logging(
             version=__version__,
@@ -20,6 +22,9 @@ class Base(ABC):
         )
         self._validate_config()
         self.logger.info(f"Initialized {self.__class__.__name__} with config: {config}")
+    
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
+        return self.process(image)
 
     def _validate_config(self) -> None:
         """Validate of configurations"""
@@ -35,18 +40,6 @@ class Base(ABC):
     def required_config_keys() -> list:
         """Return the required configuration keys"""
         return []
-
-    @abstractmethod
-    def process(self, image: torch.Tensor) -> torch.Tensor:
-        """Process of the image and return results
-        
-        Args:
-            image: Input image tensors(1xCxHxW)
-            
-        Returns:
-            Processed image tensors
-        """
-        pass
     
     def save_result(
         self,

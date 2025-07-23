@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 import numpy as np
 from tqdm import tqdm
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger
 from .model import SimpleDetectionModel
 from .dataset import YOLOMFDataset
 
@@ -32,15 +32,14 @@ class DetectionEvaluator:
         self.iou_threshold = iou_threshold
         
         # 初始化logger
-        self.logger = configure_logging(module="DetectionEvaluator")
-        self.logger.info("Initializing detection evaluator")
+        logger.info("Initializing detection evaluator")
         
         # 数据加载器
         self.test_loader = DataLoader(
             test_dataset, batch_size=batch_size, shuffle=False
         )
         
-        self.logger.info(
+        logger.info(
             f"Evaluator initialized: batch_size={batch_size}, "
             f"iou_threshold={iou_threshold}, device={device}"
         )
@@ -85,7 +84,7 @@ class DetectionEvaluator:
         self.model.eval()
         results = []
         
-        self.logger.info("Starting evaluation...")
+        logger.info("Starting evaluation...")
         
         with torch.no_grad():
             for images, targets in tqdm(self.test_loader, desc="Evaluating"):
@@ -175,7 +174,7 @@ class DetectionEvaluator:
             'false_negatives': false_negatives
         }
         
-        self.logger.info(f"Evaluation completed: Precision={precision:.4f}, Recall={recall:.4f}, "
+        logger.info(f"Evaluation completed: Precision={precision:.4f}, Recall={recall:.4f}, "
                          f"F1={f1_score:.4f}, Avg IoU={avg_iou:.4f}")
         
         return metrics

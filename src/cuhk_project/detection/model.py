@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from cuhk_project.CNN.processors.conv import Conv2dProcessor
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.CNN.processors.conv import Conv
+from cuhk_project.utils.logger import logger
 
 class SimpleDetectionModel(nn.Module):
     """简单目标检测模型，仅包含一层卷积"""
@@ -16,26 +16,27 @@ class SimpleDetectionModel(nn.Module):
             kernel_size: 卷积核大小
         """
         super().__init__()
-        self.logger = configure_logging(module="SimpleDetectionModel")
-        self.logger.info("Initializing simple detection model")
+        logger.info("Initializing simple detection model")
         
-        # 使用项目中的Conv2dProcessor作为卷积层
-        self.conv = Conv2dProcessor(
-            in_channels=in_channels,
-            out_channels=out_channels,
-            kernel_size=kernel_size,
-            stride=1,
-            padding=1
-        )
+        # 使用项目中的Conv作为卷积层（需要配置字典）
+        conv_config = {
+            'in_channels': in_channels,
+            'out_channels': out_channels,
+            'kernel_size': kernel_size,
+            'stride': 1,
+            'padding': kernel_size // 2  # 更合理的默认填充
+        }
+        self.conv = Conv(config=conv_config)
         
         # 输出层 - 每个锚点预测4个坐标+1个置信度+N个类别
         # 简化版：直接预测边界框坐标和类别概率
         self.fc_bbox = nn.Linear(out_channels, 4)  # 边界框坐标 (cx, cy, w, h)
         self.fc_class = nn.Linear(out_channels, 1)  # 二分类简化版 (后续可扩展)
         
-        self.logger.info(
+        logger.info(
             f"Model created: in_channels={in_channels}, "
-            f"out_channels={out_channels}, kernel_size={kernel_size}"
+            f"out_channels={out_channels}, kernel_size={kernel_size}, "
+            f"config={conv_config}"
         )
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:

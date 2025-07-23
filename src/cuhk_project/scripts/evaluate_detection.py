@@ -1,6 +1,6 @@
 import argparse
 import torch
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger
 from cuhk_project.detection.dataset import YOLOMFDataset
 from cuhk_project.detection.model import SimpleDetectionModel
 from cuhk_project.detection.evaluator import DetectionEvaluator
@@ -8,7 +8,6 @@ from cuhk_project.detection.visualizer import DetectionVisualizer
 
 def main():
     # 配置日志
-    logger = configure_logging(module="evaluate_detection")
     logger.info("Starting object detection evaluation")
     
     # 解析命令行参数

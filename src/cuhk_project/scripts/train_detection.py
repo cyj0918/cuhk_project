@@ -1,14 +1,13 @@
 # python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --save-path models/test_1.pth
 
 import argparse
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger
 from cuhk_project.detection.dataset import YOLOMFDataset
 from cuhk_project.detection.model import SimpleDetectionModel
 from cuhk_project.detection.trainer import DetectionTrainer
 
 def main():
     # 配置日志
-    logger = configure_logging(module="train_detection")
     logger.info("Starting object detection training")
     
     # 解析命令行参数
@@ -79,7 +78,7 @@ def main():
         trainer.train(save_path=args.save_path)
         logger.info("Training completed successfully")
     except Exception as e:
-        logger.error(f"Training failed: {str(e)}")
+        logger.critical(f"Training failed: {str(e)}")
 
 if __name__ == "__main__":
     main()

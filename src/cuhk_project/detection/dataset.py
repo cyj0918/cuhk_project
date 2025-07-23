@@ -5,7 +5,7 @@ from PIL import Image
 import numpy as np
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger 
 
 class YOLOMFDataset(Dataset):
     """YOLO格式目标检测数据集加载器"""
@@ -29,28 +29,27 @@ class YOLOMFDataset(Dataset):
         self.transform = transform
         self.target_size = target_size
         
-        # 初始化logger
-        self.logger = configure_logging(module=f"YOLOMFDataset.{split}")
-        self.logger.info(f"Initializing dataset from {self.base_dir}")
+        # 初始化logger并启用传播
+        logger.info(f"Initializing dataset from {self.base_dir}")
         
         # 加载类别和样本
         self.classes = self._load_classes()
         self.class_to_idx = {cls: idx for idx, cls in enumerate(self.classes)}
         self.samples = self._scan_samples()
-        self.logger.info(f"Loaded {len(self.samples)} samples with {len(self.classes)} classes")
+        logger.info(f"Loaded {len(self.samples)} samples with {len(self.classes)} classes")
 
     def _load_classes(self) -> List[str]:
         """从classes.txt加载类别列表"""
         classes_file = self.base_dir / "classes.txt"
         if not classes_file.exists():
-            self.logger.error(f"Classes file not found: {classes_file}")
+            logger.error(f"Classes file not found: {classes_file}")
             raise FileNotFoundError(f"Classes file not found: {classes_file}")
             
         with open(classes_file, 'r') as f:
             classes = [line.strip() for line in f if line.strip()]
             
         if not classes:
-            self.logger.error("No classes found in classes.txt")
+            logger.error("No classes found in classes.txt")
             raise ValueError("Empty classes.txt")
             
         return classes
@@ -61,7 +60,7 @@ class YOLOMFDataset(Dataset):
         label_dir = self.base_dir / "labels" / self.split
         
         if not img_dir.exists():
-            self.logger.error(f"Image directory not found: {img_dir}")
+            logger.error(f"Image directory not found: {img_dir}")
             raise FileNotFoundError(f"Image directory not found: {img_dir}")
             
         samples = []
@@ -76,7 +75,7 @@ class YOLOMFDataset(Dataset):
             label_path = label_dir / f"{img_path.stem}.txt"
             
             if not label_path.exists():
-                self.logger.warning(f"Label not found for {img_path.name}, skipping")
+                logger.warning(f"Label not found for {img_path.name}, skipping")
                 continue
                 
             samples.append({
@@ -86,7 +85,7 @@ class YOLOMFDataset(Dataset):
             })
             
         if not samples:
-            self.logger.error(f"No valid samples found in {img_dir}")
+            logger.error(f"No valid samples found in {img_dir}")
             raise ValueError(f"No valid samples found in {img_dir}")
             
         return samples
@@ -103,7 +102,7 @@ class YOLOMFDataset(Dataset):
                         
                     parts = line.split()
                     if len(parts) != 5:
-                        self.logger.warning(
+                        logger.warning(
                             f"Invalid annotation in {annotation_path.name} line {line_num}: {line}"
                         )
                         continue
@@ -114,7 +113,7 @@ class YOLOMFDataset(Dataset):
                         
                         # 验证数据有效性
                         if not (0 <= cx <= 1 and 0 <= cy <= 1 and 0 <= w <= 1 and 0 <= h <= 1):
-                            self.logger.warning(
+                            logger.warning(
                                 f"Invalid bbox in {annotation_path.name} line {line_num}: {line}"
                             )
                             continue
@@ -127,13 +126,13 @@ class YOLOMFDataset(Dataset):
                             'height': h
                         })
                     except ValueError as e:
-                        self.logger.warning(
+                        logger.warning(
                             f"Invalid number in {annotation_path.name} line {line_num}: {line}"
                         )
                         continue
                         
         except Exception as e:
-            self.logger.error(f"Error reading {annotation_path}: {str(e)}")
+            logger.error(f"Error reading {annotation_path}: {str(e)}")
             raise
             
         return annotations
@@ -156,7 +155,7 @@ class YOLOMFDataset(Dataset):
             image = image.transpose(2, 0, 1)  # HWC to CHW
             image = torch.tensor(image, dtype=torch.float32)
         except Exception as e:
-            self.logger.error(f"Error loading {sample['image_path']}: {str(e)}")
+            logger.error(f"Error loading {sample['image_path']}: {str(e)}")
             raise
             
         # 加载标注
@@ -169,11 +168,22 @@ class YOLOMFDataset(Dataset):
             boxes.append([ann['cx'], ann['cy'], ann['width'], ann['height']])
             labels.append(ann['class_id'])
         
+        # 记录实际边界框数量
+        num_boxes = len(boxes)
+        
+        # 填充到最大边界框数量 (100)
+        max_boxes = 100
+        if num_boxes < max_boxes:
+            # 添加填充边界框 [0,0,0,0]
+            boxes += [[0, 0, 0, 0]] * (max_boxes - num_boxes)
+            labels += [0] * (max_boxes - num_boxes)
+        
         target = {
             'boxes': torch.tensor(boxes, dtype=torch.float32),
             'labels': torch.tensor(labels, dtype=torch.int64),
             'image_id': torch.tensor([idx]),
-            'orig_size': torch.tensor([orig_height, orig_width])
+            'orig_size': torch.tensor([orig_height, orig_width]),
+            'num_boxes': torch.tensor(num_boxes)  # 记录实际边界框数量
         }
         
         # 应用数据增强

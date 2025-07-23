@@ -5,7 +5,7 @@ import matplotlib.patches as patches
 from PIL import Image
 from pathlib import Path
 from tqdm import tqdm
-from cuhk_project.utils.logger import configure_logging
+from cuhk_project.utils.logger import logger
 from .model import SimpleDetectionModel
 from .dataset import YOLOMFDataset
 
@@ -35,8 +35,7 @@ class DetectionVisualizer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # 初始化logger
-        self.logger = configure_logging(module="DetectionVisualizer")
-        self.logger.info(f"Initializing visualizer. Output will be saved to {self.output_dir}")
+        logger.info(f"Initializing visualizer. Output will be saved to {self.output_dir}")
     
     def denormalize_bbox(self, bbox, width, height):
         """将归一化的边界框坐标转换为像素坐标"""
@@ -96,7 +95,7 @@ class DetectionVisualizer:
     
     def visualize_dataset(self, num_samples: int = 10):
         """可视化数据集中的多个样本"""
-        self.logger.info(f"Visualizing {num_samples} samples from dataset")
+        logger.info(f"Visualizing {num_samples} samples from dataset")
         output_paths = []
         
         # 随机选择样本
@@ -107,7 +106,7 @@ class DetectionVisualizer:
                 output_path = self.visualize_sample(idx)
                 output_paths.append(output_path)
             except Exception as e:
-                self.logger.error(f"Error visualizing sample {idx}: {str(e)}")
+                logger.error(f"Error visualizing sample {idx}: {str(e)}")
         
-        self.logger.info(f"Visualization completed. Results saved to {self.output_dir}")
+        logger.info(f"Visualization completed. Results saved to {self.output_dir}")
         return output_paths
