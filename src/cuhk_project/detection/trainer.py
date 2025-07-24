@@ -134,13 +134,13 @@ class DetectionTrainer:
             gt_boxes = torch.stack(gt_boxes).to(self.device)  # [batch, max_boxes, 4]
             gt_labels = torch.stack(gt_labels).to(self.device).unsqueeze(-1)  # [batch, max_boxes, 1]
             
-            # 前向传播
+            # 前向传播 - 模型返回元组(bbox, cls_prob)
             self.optimizer.zero_grad()
-            outputs = self.model(images)  # [batch_size, 5]
+            bbox_outputs, cls_outputs = self.model(images)
             
-            # 拆分输出并扩展维度
-            pred_boxes = outputs[:, :4].unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
-            pred_cls = outputs[:, 4].unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
+            # 准备预测结果
+            pred_boxes = bbox_outputs.unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
+            pred_cls = cls_outputs.squeeze(-1).unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
             
             # 计算损失
             loss_bbox = self.bbox_loss_fn(pred_boxes, gt_boxes)
@@ -222,16 +222,16 @@ class DetectionTrainer:
                 gt_boxes = torch.stack(gt_boxes).to(self.device)  # [batch, max_boxes, 4]
                 gt_labels = torch.stack(gt_labels).to(self.device).unsqueeze(-1)  # [batch, max_boxes, 1]
                 
-                # 前向传播
-                outputs = self.model(images)  # [batch_size, 5]
+                # 前向传播 - 模型返回元组(bbox, cls_prob)
+                bbox_outputs, cls_outputs = self.model(images)
                 
-                # 拆分输出并扩展维度
-                pred_boxes = outputs[:, :4].unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
-                pred_cls = outputs[:, 4].unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
+                # 准备预测结果
+                pred_boxes = bbox_outputs.unsqueeze(1).expand(-1, max_boxes, -1)  # [batch, max_boxes, 4]
+                pred_cls = cls_outputs.squeeze(-1).unsqueeze(1).expand(-1, max_boxes)  # [batch, max_boxes]
                 
                 # 计算损失
                 loss_bbox = self.bbox_loss_fn(pred_boxes, gt_boxes)
-                loss_cls = self.cls_loss_fn(pred_cls.unsqueeze(1), gt_labels)
+                loss_cls = self.cls_loss_fn(pred_cls, gt_labels.squeeze(-1))  # 与训练保持一致
                 loss = loss_bbox + loss_cls
                 
                 # 记录损失
