@@ -75,11 +75,14 @@ class DetectionVisualizer:
             if image.dim() != 4 or image.size(1) not in [1, 3]:
                 raise ValueError(f"Invalid image shape: {image.shape}")
                 
-            # 模型预测
+            # 模型预测并处理空间输出
             with torch.no_grad():
                 prediction = self.model.predict(image)
                 if not all(k in prediction for k in ['boxes', 'scores']):
                     raise ValueError("Invalid prediction format")
+                
+                # 确保预测框坐标在0-1范围内
+                prediction['boxes'] = prediction['boxes'].clamp(0, 1)
             
             # 转换为numpy数组并验证
             image_np = image.squeeze(0).cpu().numpy()
@@ -89,6 +92,13 @@ class DetectionVisualizer:
             gt_boxes = target['boxes'].cpu().numpy()
             pred_boxes = prediction['boxes'].cpu().numpy()
             pred_scores = prediction['scores'].cpu().numpy()
+            
+            # 验证预测框尺寸
+            if pred_boxes.shape[1] != 4:
+                raise ValueError(f"Expected 4 box coordinates, got {pred_boxes.shape[1]}")
+            if np.any(pred_boxes < 0) or np.any(pred_boxes > 1):
+                logger.warning("Some box coordinates outside [0,1] range - clamping applied")
+                pred_boxes = np.clip(pred_boxes, 0, 1)
             
             # 验证数组形状
             assert isinstance(image_np, np.ndarray), "Image must be numpy array"
@@ -105,12 +115,33 @@ class DetectionVisualizer:
                 ax.add_patch(rect)
             
             # 绘制预测边界框 (红色)
-            for i, box in enumerate(pred_boxes):
-                x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
-                rect = patches.Rectangle((x, y), w, h, linewidth=2, edgecolor='r', facecolor='none')
-                ax.add_patch(rect)
-                ax.text(x, y, f"{float(pred_scores[i]):.2f}", color='red', fontsize=12,
-                        bbox=dict(facecolor='white', alpha=0.7))
+            if len(pred_boxes) > 0 and len(pred_scores) > 0:
+                # 按置信度排序
+                sorted_idx = np.argsort(pred_scores)[::-1]
+                for i in sorted_idx:
+                    box = pred_boxes[i]
+                    score = pred_scores[i]
+                    x, y, w, h = self.denormalize_bbox(box, orig_width, orig_height)
+                    
+                    # 根据置信度设置透明度
+                    alpha = min(0.5 + score*0.5, 1.0)  # 0.5-1.0 based on confidence
+                    rect = patches.Rectangle(
+                        (x, y), w, h, 
+                        linewidth=2, 
+                        edgecolor='r', 
+                        facecolor='none',
+                        alpha=alpha
+                    )
+                    ax.add_patch(rect)
+                    ax.text(
+                        x, y, 
+                        f"{float(score):.2f}", 
+                        color='red', 
+                        fontsize=10,
+                        bbox=dict(facecolor='white', alpha=0.5)
+                    )
+            else:
+                logger.warning(f"No predictions to visualize for sample {idx}")
             
             plt.title(f"Sample {idx} - GT: Green, Pred: Red")
             output_path = self.output_dir / f"sample_{idx}.png"

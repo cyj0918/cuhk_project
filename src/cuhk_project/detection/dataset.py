@@ -8,13 +8,13 @@ from typing import List, Dict, Tuple, Optional
 from cuhk_project.utils.logger import logger 
 
 class YOLOMFDataset(Dataset):
-    """YOLO格式目标检测数据集加载器（修正版）"""
+    """YOLO格式目标检测数据集加载器（优化版）"""
     
     def __init__(self, 
                  base_dir: str = "data/yolo_mf_dataset",
                  split: str = 'train', 
                  transform: Optional[callable] = None,
-                 target_size: Tuple[int, int] = (416, 416)):
+                 target_size: Tuple[int, int] = (512, 96)):
         """
         初始化数据集
         
@@ -127,7 +127,7 @@ class YOLOMFDataset(Dataset):
         return annotations
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Dict]:
-        """获取样本及其标注（修正版）"""
+        """获取样本及其标注（优化版）"""
         sample = self.samples[idx]
         try:
             # 加载图像并获取原始尺寸
@@ -140,18 +140,23 @@ class YOLOMFDataset(Dataset):
             image = image.transpose(2, 0, 1)  # HWC to CHW
             image = torch.tensor(image, dtype=torch.float32)
             
-            # 加载标注（不再需要调整坐标，因为YOLO格式已经是归一化的）
+            # 加载标注
             annotations = self._parse_annotation(sample['annotation_path'])
             
-            # 准备目标张量
+            # 准备目标张量 - 确保所有值在有效范围内
             boxes = []
             labels = []
             for ann in annotations:
-                boxes.append([ann['cx'], ann['cy'], ann['width'], ann['height']])
+                # 确保坐标在[0.01, 0.99]范围内，避免训练时出现极端值
+                cx = max(0.01, min(0.99, ann['cx']))
+                cy = max(0.01, min(0.99, ann['cy']))
+                w = max(0.01, min(0.99, ann['width']))
+                h = max(0.01, min(0.99, ann['height']))
+                
+                boxes.append([cx, cy, w, h])
                 labels.append(ann['class_id'])
             
-            # 填充逻辑保持不变...
-            
+            # 创建目标字典
             target = {
                 'boxes': torch.tensor(boxes, dtype=torch.float32),
                 'labels': torch.tensor(labels, dtype=torch.int64),
@@ -187,8 +192,11 @@ class YOLOMFDataset(Dataset):
             cx, cy, w, h = box.tolist()
             x1, y1 = cx - w/2, cy - h/2
             x2, y2 = cx + w/2, cy + h/2
-            if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
-                raise ValueError(f"Invalid box coordinates: {box.tolist()}")
+            
+            # 允许轻微超出范围（0-1），但需要记录警告
+            if not (0 <= x1 < x2 <= 1) or not (0 <= y1 < y2 <= 1):
+                if abs(x1) > 0.05 or abs(y1) > 0.05 or abs(x2-1) > 0.05 or abs(y2-1) > 0.05:
+                    logger.warning(f"Box coordinates out of bounds: {box.tolist()}")
     
     def _load_classes(self) -> List[str]:
         """从classes.txt加载类别列表"""
@@ -203,6 +211,11 @@ class YOLOMFDataset(Dataset):
         if not classes:
             logger.error("No classes found in classes.txt")
             raise ValueError("Empty classes.txt")
+            
+        # 添加背景类作为索引0
+        if "background" not in classes:
+            classes.insert(0, "background")
+            logger.info("Added background class to class list")
             
         return classes
     

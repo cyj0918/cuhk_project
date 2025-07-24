@@ -1,4 +1,4 @@
-# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --save-path models/test_1.pth
+# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --num-anchors 3 --grid-size 16x16 --save-path models/test_4.pth
 
 import argparse
 from cuhk_project.utils.logger import logger
@@ -22,14 +22,22 @@ def main():
                         help="Learning rate")
     parser.add_argument("--out-channels", type=int, default=16,
                         help="Number of output channels in convolution layer")
+    parser.add_argument("--num-anchors", type=int, default=3,
+                        help="Number of anchor boxes for YOLO-style training")
+    parser.add_argument("--grid-size", type=str, default="16x16",
+                        help="Grid size for YOLO-style training (format: HxW)")
     parser.add_argument("--save-path", type=str, default="models/detection_model.pth",
                         help="Path to save trained model")
     
     args = parser.parse_args()
     
+    # 解析网格尺寸
+    grid_height, grid_width = map(int, args.grid_size.split('x'))
+    
     logger.info(f"Training configuration: "
                 f"data_dir={args.data_dir}, batch_size={args.batch_size}, "
-                f"epochs={args.epochs}, lr={args.lr}, out_channels={args.out_channels}")
+                f"epochs={args.epochs}, lr={args.lr}, out_channels={args.out_channels}, "
+                f"num_anchors={args.num_anchors}, grid_size=({grid_height}x{grid_width})")
     
     # 创建数据集
     try:
@@ -46,29 +54,32 @@ def main():
         logger.error(f"Failed to create datasets: {str(e)}")
         return
     
-    # 创建模型
+    # 创建模型 - 添加num_anchors参数
     try:
         model = SimpleDetectionModel(
             in_channels=3, 
             out_channels=args.out_channels,
-            kernel_size=3
+            kernel_size=3,
+            num_anchors=args.num_anchors  # 添加锚框数量参数
         )
-        logger.info("Model created successfully")
+        logger.info(f"Model created successfully with {args.num_anchors} anchors")
     except Exception as e:
         logger.error(f"Failed to create model: {str(e)}")
         return
     
-    # 创建训练器
+    # 创建训练器 - 添加网格尺寸和锚框数量
     try:
         trainer = DetectionTrainer(
             model=model,
             train_dataset=train_dataset,
             val_dataset=val_dataset,
+            grid_size=(grid_height, grid_width),  # 网格尺寸
+            num_anchors=args.num_anchors,         # 锚框数量
             batch_size=args.batch_size,
             learning_rate=args.lr,
             num_epochs=args.epochs
         )
-        logger.info("Trainer initialized successfully")
+        logger.info("Trainer initialized successfully with grid-based training")
     except Exception as e:
         logger.error(f"Failed to create trainer: {str(e)}")
         return

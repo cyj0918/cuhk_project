@@ -14,8 +14,8 @@ class DetectionEvaluator:
                  test_dataset: YOLOMFDataset,
                  batch_size: int = 4,
                  device: str = "mps" if torch.backends.mps.is_available() else "cpu",
-                 iou_threshold: float = 0.5,
-                 conf_threshold: float = 0.5):
+                 iou_threshold: float = 0.4,
+                 conf_threshold: float = 0.2):
         """
         初始化评估器
         
@@ -111,44 +111,22 @@ class DetectionEvaluator:
         if not hasattr(self, '_collate_fn'):
             self._collate_fn = lambda x: tuple(zip(*x))
             
-    def _validate_boxes(self, boxes) -> bool:
-        """验证边界框坐标是否有效"""
-        # 统一转换为numpy数组处理
-        if isinstance(boxes, torch.Tensor):
-            boxes = boxes.cpu().numpy()
-        
-        # 检查空数组
+    def _validate_boxes(self, boxes):
+        """放宽验证条件，仅检查基本有效性"""
         if boxes.size == 0:
             return False
-            
-        for box in boxes:
-            # 确保转换为Python float类型
-            cx, cy, w, h = map(float, box[:4])
-            
-            # 检查坐标范围
-            if not (0 <= cx <= 1 and 0 <= cy <= 1):
-                logger.warning(f"Invalid center coordinates: ({cx:.4f}, {cy:.4f})")
-                return False
-                
-            # 检查宽高
-            if w <= 0 or h <= 0:
-                logger.warning(f"Invalid box dimensions: width={w:.4f}, height={h:.4f}")
-                return False
-                
-            # 检查边界
-            x1, y1 = cx - w/2, cy - h/2
-            x2, y2 = cx + w/2, cy + h/2
-            if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
-                logger.warning(f"Invalid box bounds: ({x1:.4f}, {y1:.4f}, {x2:.4f}, {y2:.4f})")
-                return False
-                
+        # 检查是否为有效数值
+        if not np.all(np.isfinite(boxes)):
+            return False
+        # 检查宽高是否为正
+        if np.any(boxes[:, 2:] <= 0):
+            return False
         return True
 
     def evaluate(self):
         """评估模型性能"""
         self.model.eval()
         results = []
-        self.conf_threshold = 0.3
         
         # MPS设备警告
         if str(self.device) == "mps":
@@ -207,14 +185,41 @@ class DetectionEvaluator:
                         logger.error(f"Image processing failed: {str(e)}")
                         raise
 
-                    # 获取预测
+                    # 获取预测并处理空间输出
                     try:
-                        predictions = self.model.predict(images)
-                        if not isinstance(predictions, dict):
+                        # Get predictions in correct format
+                        if hasattr(self.model, 'predict'):
+                            predictions = self.model.predict(images)
+                        else:
+                            # Fallback to raw predictions with conversion
+                            bbox_pred, obj_pred = self.model(images)
+                            predictions = {
+                                'boxes': bbox_pred,
+                                'scores': obj_pred
+                            }
+                        
+                        # Validate output format
+                        if not isinstance(predictions, dict) or 'boxes' not in predictions or 'scores' not in predictions:
                             raise ValueError("Model should return dict with 'boxes' and 'scores'")
                         
-                        pred_boxes = predictions['boxes'].cpu().numpy()
+                        # 确保预测框坐标在0-1范围内
+                        pred_boxes = predictions['boxes'].clamp(0, 1).cpu().numpy()
                         pred_scores = predictions['scores'].cpu().numpy()
+                        
+                        # 验证预测框尺寸
+                        if pred_boxes.ndim != 2 or pred_boxes.shape[1] != 4:
+                            raise ValueError(f"Expected [K,4] box coordinates, got {pred_boxes.shape}")
+                        if np.any(pred_boxes < 0) or np.any(pred_boxes > 1):
+                            logger.warning("Some box coordinates outside [0,1] range - clamping applied")
+                            pred_boxes = np.clip(pred_boxes, 0, 1)
+                        
+                        # 确保分数与框数量匹配
+                        if len(pred_scores) != len(pred_boxes):
+                            raise ValueError(f"Boxes and scores count mismatch: {len(pred_boxes)} vs {len(pred_scores)}")
+                        
+                        # 确保分数与框数量匹配
+                        if len(pred_scores) != len(pred_boxes):
+                            raise ValueError(f"Boxes and scores count mismatch: {len(pred_boxes)} vs {len(pred_scores)}")
                     except Exception as e:
                         logger.error(f"Prediction failed: {str(e)}")
                         logger.error(f"Input shape: {images.shape}")

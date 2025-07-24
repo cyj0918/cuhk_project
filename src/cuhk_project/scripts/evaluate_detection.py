@@ -43,11 +43,15 @@ def main():
     
     # 创建模型并加载权重
     try:
+        # Force CPU evaluation for stability
+        device = "cpu"
+        logger.info(f"Forcing CPU evaluation for stability")
+        
         model = SimpleDetectionModel(
             in_channels=3, 
             out_channels=args.out_channels,
             kernel_size=3
-        )
+        ).to(device)
         
         # 加载训练好的权重
         model.load_state_dict(torch.load(args.model_path))
