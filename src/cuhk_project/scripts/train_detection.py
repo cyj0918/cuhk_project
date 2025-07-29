@@ -60,7 +60,23 @@ def main():
         
         logger.info(f"Train dataset size: {len(train_dataset)}")
         logger.info(f"Validation dataset size: {len(val_dataset)}")
+
+        # 初始化DataLoader
+        train_loader = torch.utils.data.DataLoader(
+            train_dataset,
+            batch_size=args.batch_size,
+            shuffle=True,
+            collate_fn=YOLOMFDataset.collate_fn,
+            num_workers=0
+        )
         
+        val_loader = torch.utils.data.DataLoader(
+            val_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            collate_fn=YOLOMFDataset.collate_fn,
+            num_workers=0
+        )
     except Exception as e:
         logger.error(f"Failed to create datasets: {str(e)}")
         return
@@ -84,8 +100,10 @@ def main():
     try:
         trainer = DetectionTrainer(
             model=model,
-            train_dataset=train_dataset,  # 传递训练数据集
-            val_dataset=val_dataset,      # 传递验证数据集
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            train_loader=train_loader,  # 传入train_loader
+            val_loader=val_loader,      # 传递验证数据集
             grid_size=grid_size,
             num_anchors=args.num_anchors,
             batch_size=args.batch_size,    # 传递批次大小

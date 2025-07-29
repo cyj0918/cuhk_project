@@ -57,7 +57,7 @@ def main():
     
     # 初始化
     device = torch.device('cpu')  # 使用CPU保证兼容性
-    dataset = YOLOMFDataset(base_dir=data_dir, split='test', target_size=(512, 96))
+    dataset = YOLOMFDataset(base_dir=data_dir, split='test')
     model = load_model(model_path, out_channels).to(device)
     
     print(f"Loaded model from {model_path}")

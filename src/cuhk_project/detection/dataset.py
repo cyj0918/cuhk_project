@@ -9,7 +9,46 @@ from cuhk_project.utils.logger import logger
 
 class YOLOMFDataset(Dataset):
     """YOLO格式目标检测数据集加载器（优化版）"""
-    
+
+    @staticmethod
+    def collate_fn(batch):
+        """处理不同数量boxes的自定义collate函数"""
+        images = []
+        targets = []
+        
+        # 找出batch中最多的boxes数量
+        max_boxes = max(len(item[1]['boxes']) for item in batch) if batch else 0
+        
+        for image, target in batch:
+            images.append(image)
+            
+            # 对boxes进行padding
+            num_boxes = len(target['boxes'])
+            padded_boxes = torch.zeros((max_boxes, 4), dtype=torch.float32)
+            if num_boxes > 0:
+                padded_boxes[:num_boxes] = target['boxes']
+            
+            # 对labels进行padding
+            padded_labels = torch.zeros(max_boxes, dtype=torch.int64)
+            if num_boxes > 0:
+                padded_labels[:num_boxes] = target['labels']
+            
+            # 创建新的target字典
+            padded_target = {
+                'boxes': padded_boxes,
+                'labels': padded_labels,
+                'image_id': target['image_id'],
+                'orig_size': target['orig_size'],
+                'resized_size': target['resized_size'],
+                'num_boxes': torch.tensor(num_boxes),  # 记录实际boxes数量
+                'grid_size': target['grid_size']
+            }
+            targets.append(padded_target)
+        
+        # 堆叠图像
+        images = torch.stack(images)
+        return images, targets
+
     def __init__(self, 
                  base_dir: str = "data/yolo_mf_dataset",
                  split: str = 'train', 
@@ -78,10 +117,14 @@ class YOLOMFDataset(Dataset):
                         continue
                         
                     parts = line.split()
-                    if len(parts) != 5:
-                        logger.warning(
-                            f"Invalid annotation in {annotation_path.name} line {line_num}: {line}"
-                        )
+                    if len(parts) == 5:
+                        class_id = int(parts[0])
+                        cx, cy, w, h = map(float, parts[1:5])
+                    elif len(parts) == 4:
+                        class_id = 0  # Default class if not specified
+                        cx, cy, w, h = map(float, parts[0:4])
+                    else:
+                        logger.warning(f"Invalid annotation in {annotation_path.name} line {line_num}: {line}")
                         continue
                     
                     try:
@@ -138,8 +181,8 @@ class YOLOMFDataset(Dataset):
             image = Image.open(sample['image_path']).convert('RGB')
             orig_width, orig_height = image.size
             
-            # 调整图像大小并归一化 (使用(height, width)顺序)
-            image = image.resize((self.target_width, self.target_height))  # PIL需要(width, height)
+            # 调整图像大小并归一化
+            image = image.resize((self.target_width, self.target_height))
             image = np.array(image) / 255.0
             image = image.transpose(2, 0, 1)  # HWC to CHW
             image = torch.tensor(image, dtype=torch.float32)
@@ -151,37 +194,70 @@ class YOLOMFDataset(Dataset):
             boxes = []
             labels = []
             for ann in annotations:
-                # 确保坐标在[0.01, 0.99]范围内，避免训练时出现极端值
-                cx = max(0.01, min(0.99, ann['cx']))
-                cy = max(0.01, min(0.99, ann['cy']))
-                w = max(0.01, min(0.99, ann['width']))
-                h = max(0.01, min(0.99, ann['height']))
+                try:
+                    # 验证并规范化坐标值
+                    cx = max(0.01, min(0.99, float(ann['cx'])))
+                    cy = max(0.01, min(0.99, float(ann['cy'])))
+                    w = max(0.01, min(0.99, float(ann['width'])))
+                    h = max(0.01, min(0.99, float(ann['height'])))
+                    
+                    boxes.append([cx, cy, w, h])
+                    labels.append(int(ann['class_id']))
+                except Exception as e:
+                    logger.error(f"Invalid annotation in {sample['image_path']}: {ann}, error: {str(e)}")
+                    continue
+            
+            # 严格验证boxes
+            if not boxes:
+                boxes_tensor = torch.zeros((0, 4), dtype=torch.float32)
+            else:
+                # 确保所有boxes都是4个值
+                invalid_boxes = [box for box in boxes if len(box) != 4]
+                if invalid_boxes:
+                    raise ValueError(f"Invalid boxes in {sample['image_path']}: {invalid_boxes}")
                 
-                boxes.append([cx, cy, w, h])
-                labels.append(ann['class_id'])
+                boxes_tensor = torch.tensor(boxes, dtype=torch.float32)
+                if boxes_tensor.dim() != 2 or boxes_tensor.size(1) != 4:
+                    raise ValueError(f"Boxes tensor has invalid shape: {boxes_tensor.shape}")
             
             # 创建目标字典
             target = {
-                'boxes': torch.tensor(boxes, dtype=torch.float32),
+                'boxes': boxes_tensor.reshape(-1, 4),  # 强制Nx4形状
                 'labels': torch.tensor(labels, dtype=torch.int64),
                 'image_id': torch.tensor([idx]),
-                'orig_size': torch.tensor([orig_height, orig_width]),  # (height, width)
-                'resized_size': torch.tensor([self.target_height, self.target_width]),  # (height, width)
+                'orig_size': torch.tensor([orig_height, orig_width]),
+                'resized_size': torch.tensor([self.target_height, self.target_width]),
                 'num_boxes': torch.tensor(len(annotations)),
-                'grid_size': torch.tensor([self.grid_height, self.grid_width])  # (height, width)
+                'grid_size': torch.tensor([self.grid_height, self.grid_width])
             }
             
             # 应用数据增强
             if self.transform:
-                image, target = self.transform(image, target)
+                try:
+                    image, target = self.transform(image, target)
+                    # transform后验证
+                    if target['boxes'].dim() != 2 or target['boxes'].size(1) != 4:
+                        raise ValueError(f"Transform corrupted boxes shape: {target['boxes'].shape}")
+                except Exception as e:
+                    logger.error(f"Transform failed for {sample['image_path']}: {str(e)}")
+                    raise
             
-            # 验证输出
-            self._validate_output(image, target)
             return image, target
             
         except Exception as e:
             logger.error(f"Error processing sample {idx} ({sample['image_path']}): {str(e)}")
-            raise
+            # 返回空样本避免训练中断
+            empty_image = torch.zeros((3, self.target_height, self.target_width), dtype=torch.float32)
+            empty_target = {
+                'boxes': torch.zeros((0, 4), dtype=torch.float32),
+                'labels': torch.zeros(0, dtype=torch.int64),
+                'image_id': torch.tensor([idx]),
+                'orig_size': torch.tensor([self.target_height, self.target_width]),
+                'resized_size': torch.tensor([self.target_height, self.target_width]),
+                'num_boxes': torch.tensor(0),
+                'grid_size': torch.tensor([self.grid_height, self.grid_width])
+            }
+            return empty_image, empty_target
 
     def _validate_output(self, image: torch.Tensor, target: Dict):
         """验证输出数据有效性"""

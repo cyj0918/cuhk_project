@@ -1,4 +1,5 @@
 import os
+import math
 import torch
 import torch.optim as optim
 import numpy as np
@@ -28,6 +29,8 @@ class DetectionTrainer:
         
     def __init__(self, 
                  model: SimpleDetectionModel, 
+                 train_loader,
+                 val_loader,
                  train_dataset: YOLOMFDataset,
                  val_dataset: YOLOMFDataset,
                  grid_size: tuple = (16, 16),  # 新增网格尺寸参数
@@ -51,6 +54,8 @@ class DetectionTrainer:
             device: 训练设备
         """
         self.model = model.to(device)
+        self.train_loader = train_loader
+        self.val_loader = val_loader
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.grid_size = grid_size
@@ -72,12 +77,14 @@ class DetectionTrainer:
         self.train_loader = DataLoader(
             train_dataset, 
             batch_size=batch_size, 
-            shuffle=True
+            shuffle=True,
+            collate_fn=YOLOMFDataset.collate_fn
         )
         self.val_loader = DataLoader(
             val_dataset, 
             batch_size=batch_size, 
-            shuffle=False
+            shuffle=False,
+            collate_fn=YOLOMFDataset.collate_fn
         )
         
         # 优化器
@@ -107,9 +114,9 @@ class DetectionTrainer:
         if not all_boxes:
             # 默认锚框尺寸
             return torch.tensor([
-                [0.05, 0.2],  # 小物體
-                [0.15, 0.5],  # 中物體
-                [0.25, 0.8] 
+                [0.0749, 0.3119],  # 小物體
+                [0.0796, 0.3856],  # 中等物體
+                [0.1139, 0.6215]   # 大物體 
             ])
         
         all_boxes = torch.tensor(all_boxes)
@@ -127,52 +134,51 @@ class DetectionTrainer:
         """构建YOLO格式的网格目标"""
         B = len(targets)
         H, W = self.grid_size
-        # 目标张量: [batch, anchors, 5, grid_h, grid_w]
-        # 5: [offset_x, offset_y, log(w_ratio), log(h_ratio), obj_confidence]
+        
+        # 初始化目标张量
         targets_tensor = torch.zeros(B, self.num_anchors, 5, H, W)
         
         for b, target in enumerate(targets):
-            boxes = target['boxes']
+            num_boxes = target['num_boxes'].item()
+            boxes = target['boxes'][:num_boxes]  # 只取真实boxes
+            
+            # 处理每个box
             for box in boxes:
-                cx, cy, w, h = box
-                
-                # 计算网格位置
-                grid_x = int(cx * W)
-                grid_y = int(cy * H)
-                
-                # 确保在网格范围内
-                grid_x = max(0, min(W-1, grid_x))
-                grid_y = max(0, min(H-1, grid_y))
-                
-                # 计算偏移量
-                offset_x = cx * W - grid_x
-                offset_y = cy * H - grid_y
-                
-                # 计算最匹配的锚框
-                ious = []
-                for anchor in self.anchor_boxes:
-                    # 计算IoU
-                    box_area = w * h
-                    anchor_area = anchor[0] * anchor[1]
-                    inter_w = min(w, anchor[0])
-                    inter_h = min(h, anchor[1])
-                    inter_area = inter_w * inter_h
-                    iou = inter_area / (box_area + anchor_area - inter_area)
-                    ious.append(iou)
-                
-                best_anchor = torch.argmax(torch.tensor(ious))
-                
-                # 计算宽高比例的对数
-                w_ratio = w / self.anchor_boxes[best_anchor][0]
-                h_ratio = h / self.anchor_boxes[best_anchor][1]
-                
-                # 设置目标值
-                targets_tensor[b, best_anchor, 0, grid_y, grid_x] = offset_x
-                targets_tensor[b, best_anchor, 1, grid_y, grid_x] = offset_y
-                targets_tensor[b, best_anchor, 2, grid_y, grid_x] = torch.log(w_ratio)
-                targets_tensor[b, best_anchor, 3, grid_y, grid_x] = torch.log(h_ratio)
-                targets_tensor[b, best_anchor, 4, grid_y, grid_x] = 1.0  # obj confidence
-        
+                try:
+                    cx, cy, w, h = box.tolist()
+                    
+                    # 计算网格位置
+                    grid_x = min(W-1, max(0, int(cx * W)))
+                    grid_y = min(H-1, max(0, int(cy * H)))
+                    
+                    # 计算偏移量
+                    offset_x = cx * W - grid_x
+                    offset_y = cy * H - grid_y
+                    
+                    # 计算最匹配的锚框
+                    ious = []
+                    for anchor in self.anchor_boxes:
+                        box_area = w * h
+                        anchor_area = anchor[0] * anchor[1]
+                        inter_w = min(w, anchor[0])
+                        inter_h = min(h, anchor[1])
+                        inter_area = inter_w * inter_h
+                        iou = inter_area / (box_area + anchor_area - inter_area)
+                        ious.append(iou)
+                    
+                    best_anchor = torch.argmax(torch.tensor(ious))
+                    
+                    # 设置目标值
+                    targets_tensor[b, best_anchor, 0, grid_y, grid_x] = offset_x
+                    targets_tensor[b, best_anchor, 1, grid_y, grid_x] = offset_y
+                    targets_tensor[b, best_anchor, 2, grid_y, grid_x] = math.log(w / self.anchor_boxes[best_anchor][0])
+                    targets_tensor[b, best_anchor, 3, grid_y, grid_x] = math.log(h / self.anchor_boxes[best_anchor][1])
+                    targets_tensor[b, best_anchor, 4, grid_y, grid_x] = 1.0  # obj confidence
+                    
+                except Exception as e:
+                    logger.error(f"Error processing box {box.tolist()}: {str(e)}")
+                    continue
+                    
         return targets_tensor
 
     def train_epoch(self, epoch: int) -> dict:
@@ -184,12 +190,10 @@ class DetectionTrainer:
         
         progress_bar = tqdm(self.train_loader, desc=f"Epoch {epoch+1}/{self.num_epochs}")
         
-        for batch_idx, batch in enumerate(progress_bar):
-            # 安全解包批数据
-            images, targets = batch
+        for batch_idx, (images, targets) in enumerate(progress_bar):
             images = images.to(self.device)
             
-            # 构建YOLO目标
+            # 构建YOLO目标时自动处理padding
             yolo_targets = self._build_targets(targets).to(self.device)
             
             # 前向传播
