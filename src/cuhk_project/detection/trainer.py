@@ -72,14 +72,12 @@ class DetectionTrainer:
         self.train_loader = DataLoader(
             train_dataset, 
             batch_size=batch_size, 
-            shuffle=True,
-            collate_fn=self.collate_fn
+            shuffle=True
         )
         self.val_loader = DataLoader(
             val_dataset, 
             batch_size=batch_size, 
-            shuffle=False,
-            collate_fn=self.collate_fn
+            shuffle=False
         )
         
         # 优化器

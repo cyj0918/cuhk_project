@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from PIL import Image
 import numpy as np
 from pathlib import Path
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Any
 from cuhk_project.utils.logger import logger 
 
 class YOLOMFDataset(Dataset):
@@ -14,7 +14,8 @@ class YOLOMFDataset(Dataset):
                  base_dir: str = "data/yolo_mf_dataset",
                  split: str = 'train', 
                  transform: Optional[callable] = None,
-                 target_size: Tuple[int, int] = (512, 96)):
+                 target_size: Tuple[int, int] = (96, 512),  # (height, width)
+                 grid_size: Tuple[int, int] = (6, 32)):     # (grid_height, grid_width)
         """
         初始化数据集
         
@@ -22,15 +23,18 @@ class YOLOMFDataset(Dataset):
             base_dir: 数据集根目录
             split: 数据集分割 (train/val/test)
             transform: 数据增强变换
-            target_size: 目标图像尺寸 (宽, 高)
+            target_size: 目标图像尺寸 (高, 宽)
+            grid_size: 网格尺寸 (高, 宽)
         """
         self.base_dir = Path(base_dir)
         self.split = split
         self.transform = transform
-        self.target_size = target_size
+        self.target_height, self.target_width = target_size  # 分解为高和宽
+        self.grid_height, self.grid_width = grid_size        # 分解为网格高和宽
         
         # 初始化logger并启用传播
         logger.info(f"Initializing dataset from {self.base_dir}")
+        logger.info(f"Target size: {target_size}, Grid size: {grid_size}")
         
         # 加载类别和样本
         self.classes = self._load_classes()
@@ -134,8 +138,8 @@ class YOLOMFDataset(Dataset):
             image = Image.open(sample['image_path']).convert('RGB')
             orig_width, orig_height = image.size
             
-            # 调整图像大小并归一化
-            image = image.resize(self.target_size)
+            # 调整图像大小并归一化 (使用(height, width)顺序)
+            image = image.resize((self.target_width, self.target_height))  # PIL需要(width, height)
             image = np.array(image) / 255.0
             image = image.transpose(2, 0, 1)  # HWC to CHW
             image = torch.tensor(image, dtype=torch.float32)
@@ -161,9 +165,10 @@ class YOLOMFDataset(Dataset):
                 'boxes': torch.tensor(boxes, dtype=torch.float32),
                 'labels': torch.tensor(labels, dtype=torch.int64),
                 'image_id': torch.tensor([idx]),
-                'orig_size': torch.tensor([orig_height, orig_width]),
-                'resized_size': torch.tensor(self.target_size[::-1]),  # (height, width)
-                'num_boxes': torch.tensor(len(annotations))
+                'orig_size': torch.tensor([orig_height, orig_width]),  # (height, width)
+                'resized_size': torch.tensor([self.target_height, self.target_width]),  # (height, width)
+                'num_boxes': torch.tensor(len(annotations)),
+                'grid_size': torch.tensor([self.grid_height, self.grid_width])  # (height, width)
             }
             
             # 应用数据增强
@@ -182,6 +187,11 @@ class YOLOMFDataset(Dataset):
         """验证输出数据有效性"""
         if not isinstance(image, torch.Tensor):
             raise ValueError("Image must be torch.Tensor")
+            
+        # 验证图像尺寸
+        _, channels, height, width = image.shape
+        if (height, width) != (self.target_height, self.target_width):
+            raise ValueError(f"Image size mismatch: expected ({self.target_height}, {self.target_width}), got ({height}, {width})")
             
         boxes = target['boxes']
         if boxes.dim() != 2 or boxes.size(1) != 4:

@@ -29,7 +29,7 @@ class DetectionVisualizer:
             y = (cy - h/2) * image.shape[1]
             rect = Rectangle(
                 (x, y), w*image.shape[2], h*image.shape[1],
-                linewidth=1, edgecolor='g', facecolor='none', linestyle='--'
+                linewidth=1, edgecolor='g', facecolor='none'
             )
             ax.add_patch(rect)
         

@@ -2,13 +2,14 @@ import os
 import json
 import torch
 import numpy as np
+from torchvision.ops import nms
 from tqdm import tqdm
 from .model import SimpleDetectionModel
 from .dataset import YOLOMFDataset
 from .visualizer import DetectionVisualizer
 
 class DetectionEvaluator:
-    def __init__(self, model, dataset, output_dir, conf_thresh=0.2, iou_thresh=0.4):
+    def __init__(self, model, dataset, output_dir, conf_thresh=0.4, iou_thresh=0.4):
         self.model = model
         self.dataset = dataset
         self.output_dir = output_dir
@@ -68,8 +69,12 @@ class DetectionEvaluator:
             with torch.no_grad():
                 pred = self.model.predict(image_tensor, conf_thresh=self.conf_thresh)
             
+            # 直接使用模型预测的框和分数（模型已执行NMS）
+            pred_boxes_tensor = pred.get('boxes', torch.empty((0, 4)))  # [N, 4] in (cx, cy, w, h) normalized
+            scores = pred.get('scores', torch.ones(len(pred_boxes_tensor)) if len(pred_boxes_tensor) > 0 else torch.empty(0))
+            
             true_boxes = target['boxes'].numpy()
-            pred_boxes = pred['boxes'].cpu().numpy()
+            pred_boxes = pred_boxes_tensor.cpu().numpy()
             
             # 保存可视化结果
             self.visualizer.visualize_sample(
@@ -80,21 +85,33 @@ class DetectionEvaluator:
             )
             
             # 简化的评估指标计算
-            matched = [False] * len(true_boxes)
-            for pred_box in pred_boxes:
-                best_iou = 0
-                for i, true_box in enumerate(true_boxes):
-                    iou = self.calculate_iou(pred_box, true_box)
-                    if iou > best_iou and iou > self.iou_thresh:
-                        best_iou = iou
-                        matched[i] = True
-                
-                if best_iou > 0:
-                    metrics['true_positives'] += 1
-                else:
-                    metrics['false_positives'] += 1
+            # 改进匹配算法：确保每个真实框只匹配一个预测框
+            matched_true = [False] * len(true_boxes)
+            matched_pred = [False] * len(pred_boxes)
             
-            metrics['false_negatives'] += sum(1 for m in matched if not m)
+            # 创建IoU矩阵
+            iou_matrix = np.zeros((len(true_boxes), len(pred_boxes)))
+            for i, true_box in enumerate(true_boxes):
+                for j, pred_box in enumerate(pred_boxes):
+                    iou_matrix[i, j] = self.calculate_iou(pred_box, true_box)
+            
+            # 为每个真实框找到最佳匹配的预测框
+            for i in range(len(true_boxes)):
+                best_iou = self.iou_thresh
+                best_j = -1
+                for j in range(len(pred_boxes)):
+                    if not matched_pred[j] and iou_matrix[i, j] > best_iou:
+                        best_iou = iou_matrix[i, j]
+                        best_j = j
+                
+                if best_j != -1:
+                    matched_true[i] = True
+                    matched_pred[best_j] = True
+            
+            # 统计指标
+            metrics['true_positives'] += sum(matched_pred)
+            metrics['false_positives'] += len(pred_boxes) - sum(matched_pred)
+            metrics['false_negatives'] += len(true_boxes) - sum(matched_true)
         
         # 计算最终指标
         precision = metrics['true_positives'] / (metrics['true_positives'] + metrics['false_positives'])

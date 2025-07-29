@@ -1,52 +1,43 @@
 from typing import Tuple
 import torch
 import torch.nn as nn
+from torchvision.ops import nms as torch_nms  # 使用torchvision的NMS实现
 from cuhk_project.CNN.processors.conv import Conv
 from cuhk_project.utils.logger import logger
 
 class SimpleDetectionModel(nn.Module):
-    def __init__(self, in_channels=3, out_channels=16, kernel_size=3, num_anchors=3):
+    def __init__(self, in_channels=3, out_channels=16, kernel_size=3, 
+                 num_anchors=3, grid_size=(6, 32)):  # 使用6x32网格尺寸
         super().__init__()
-        # 特徵提取層
         self.backbone = nn.Sequential(
             Conv(config={
-                'in_channels':3,
-                'out_channels':16,
-                'kernel_size':3,
-                'stride':1,
-                'padding':1
-            }),
-            nn.MaxPool2d(2),
-            Conv(config={
-                'in_channels':16,
-                'out_channels':32,
-                'kernel_size':3,
-                'stride':1,
-                'padding':1
-            }),
-            nn.MaxPool2d(2),
-            Conv(config={
-                'in_channels':32,
-                'out_channels':64,
-                'kernel_size':3,
-                'stride':1,
-                'padding':1
+                'in_channels': in_channels,
+                'out_channels': out_channels,
+                'kernel_size': kernel_size,
+                'stride': 1,
+                'padding': 1
             })
         )
         
-        # YOLO輸出層 (5 = 4個坐標 + 1個置信度)
+        # YOLO输出层
         self.detection_head = nn.Conv2d(
-            64, 
-            num_anchors * (5), 
+            out_channels,
+            num_anchors * 5,  # 5 = 4个坐标 + 1个置信度
             kernel_size=1
         )
         self.num_anchors = num_anchors
-        # Initialize anchor boxes (width, height) based on dataset analysis
-        self.anchor_boxes = [
-            [0.05, 0.2],  # 小物體
-            [0.15, 0.5],  # 中物體
-            [0.25, 0.8] 
+        self.grid_size = grid_size  # 保存网格尺寸
+        
+        # 锚框 - 根据实际目标尺寸调整
+        # 96x512图像，目标通常较小
+        anchor_boxes = [
+            [0.05, 0.15],  # 小物体 (4.8x76.8像素)
+            [0.08, 0.25],  # 中等物体 (7.68x128像素)
+            [0.12, 0.35]   # 大物体 (11.52x179.2像素)
         ]
+        
+        # 注册锚框为缓冲区
+        self.register_buffer('anchor_boxes', torch.tensor(anchor_boxes, dtype=torch.float32))
 
     def forward(self, x):
         features = self.backbone(x)
@@ -54,31 +45,32 @@ class SimpleDetectionModel(nn.Module):
         predictions = self.detection_head(features)
         B, _, H, W = predictions.shape
         
-        # Reshape to [B, anchors, 5, H, W]
+        # 重塑为[B, anchors, 5, H, W]
         predictions = predictions.view(B, self.num_anchors, 5, H, W)
-        # Ensure spatial dimensions match between predictions and mask
-        if H != 16 or W != 16:
-            predictions = nn.functional.interpolate(
+        
+        # 检查特征图尺寸是否匹配网格尺寸
+        if H != self.grid_size[0] or W != self.grid_size[1]:
+            # 使用自适应池化确保输出尺寸匹配
+            predictions = nn.functional.adaptive_avg_pool2d(
                 predictions.view(B, -1, H, W),
-                size=(16, 16),
-                mode='bilinear'
-            ).view(B, self.num_anchors, 5, 16, 16)
-        # 分離坐標和置信度
+                self.grid_size
+            ).view(B, self.num_anchors, 5, self.grid_size[0], self.grid_size[1])
+        
+        # 分离坐标和置信度
         bbox = predictions[:, :, :4, :, :]  # [B, anchors, 4, H, W]
         obj = predictions[:, :, 4, :, :]    # [B, anchors, H, W]
         
         return bbox, obj
-
-    def predict(self, x, conf_thresh=0.5, iou_thresh=0.5):
+    
+    def predict(self, x, conf_thresh=0.5, iou_thresh=0.3):
         """修正后的预测方法"""
         with torch.no_grad():
             # 获取原始输出
             bbox_map, obj_map = self.forward(x)
             B, num_anchors, _, H, W = bbox_map.shape
             
-            # 应用激活函数
+            # 只对置信度应用sigmoid
             obj_prob = torch.sigmoid(obj_map)
-            bbox_map = torch.sigmoid(bbox_map)
             
             # 获取设备信息
             device = x.device
@@ -90,24 +82,33 @@ class SimpleDetectionModel(nn.Module):
                 batch_boxes = []
                 batch_scores = []
                 
+                # 获取当前batch的锚框数据
+                anchors = self.anchor_boxes.to(device)
+                
                 for anchor_idx in range(num_anchors):
-                    anchor_w, anchor_h = self.anchor_boxes[anchor_idx]
-                    anchor_w = anchor_w.to(device) if torch.is_tensor(anchor_w) else torch.tensor(anchor_w, device=device)
-                    anchor_h = anchor_h.to(device) if torch.is_tensor(anchor_h) else torch.tensor(anchor_h, device=device)
+                    anchor_w = anchors[anchor_idx, 0]
+                    anchor_h = anchors[anchor_idx, 1]
                     
                     for y in range(H):
                         for x in range(W):
-                            if obj_prob[b, anchor_idx, y, x] < conf_thresh:
+                            confidence = obj_prob[b, anchor_idx, y, x]
+                            if confidence < conf_thresh:
                                 continue
-                                
-                            # 解码预测框
-                            dx, dy, dw, dh = bbox_map[b, anchor_idx, :, y, x]
                             
-                            # 转换为绝对坐标
-                            cx = (x + dx) / W
-                            cy = (y + dy) / H
-                            w = anchor_w * dw
-                            h = anchor_h * dh
+                            # 获取原始预测值
+                            dx = bbox_map[b, anchor_idx, 0, y, x]
+                            dy = bbox_map[b, anchor_idx, 1, y, x]
+                            dw = bbox_map[b, anchor_idx, 2, y, x]
+                            dh = bbox_map[b, anchor_idx, 3, y, x]
+                            
+                            # 正确解码预测框
+                            # 1. 中心坐标偏移 (应用sigmoid)
+                            cx = (x + torch.sigmoid(dx)) / W
+                            cy = (y + torch.sigmoid(dy)) / H
+                            
+                            # 2. 尺寸缩放 (直接使用指数函数)
+                            w = anchor_w * torch.exp(dw)
+                            h = anchor_h * torch.exp(dh)
                             
                             # 确保坐标有效
                             cx = torch.clamp(cx, 0.0, 1.0)
@@ -115,16 +116,24 @@ class SimpleDetectionModel(nn.Module):
                             w = torch.clamp(w, 0.01, 0.99)
                             h = torch.clamp(h, 0.01, 0.99)
                             
-                            batch_boxes.append(torch.stack([cx, cy, w, h]))
-                            batch_scores.append(obj_prob[b, anchor_idx, y, x])
+                            batch_boxes.append(torch.tensor([cx, cy, w, h], device=device))
+                            batch_scores.append(confidence)
                 
                 # 转换为tensor
                 if len(batch_boxes) > 0:
-                    boxes_tensor = torch.stack(batch_boxes).to(device)
-                    scores_tensor = torch.stack(batch_scores).to(device)
+                    boxes_tensor = torch.stack(batch_boxes)
+                    scores_tensor = torch.stack(batch_scores)
                     
-                    # 应用NMS
-                    keep = self.nms(boxes_tensor, scores_tensor, iou_thresh)
+                    # 应用NMS (使用torchvision实现)
+                    # 转换为中心坐标到xyxy格式
+                    x1 = boxes_tensor[:, 0] - boxes_tensor[:, 2] / 2
+                    y1 = boxes_tensor[:, 1] - boxes_tensor[:, 3] / 2
+                    x2 = boxes_tensor[:, 0] + boxes_tensor[:, 2] / 2
+                    y2 = boxes_tensor[:, 1] + boxes_tensor[:, 3] / 2
+                    xyxy_boxes = torch.stack([x1, y1, x2, y2], dim=1)
+                    
+                    keep = torch_nms(xyxy_boxes, scores_tensor, iou_thresh)
+                    
                     boxes_tensor = boxes_tensor[keep]
                     scores_tensor = scores_tensor[keep]
                 else:
@@ -138,41 +147,3 @@ class SimpleDetectionModel(nn.Module):
                 'boxes': all_boxes[0],  # 假设batch_size=1
                 'scores': all_scores[0]
             }
-
-    @staticmethod
-    def nms(boxes, scores, threshold):
-        """修正后的NMS实现"""
-        if boxes.numel() == 0:
-            return torch.zeros(0, dtype=torch.long, device=boxes.device)
-        
-        # 转换到xyxy格式
-        x1 = boxes[:, 0] - boxes[:, 2] / 2
-        y1 = boxes[:, 1] - boxes[:, 3] / 2
-        x2 = boxes[:, 0] + boxes[:, 2] / 2
-        y2 = boxes[:, 1] + boxes[:, 3] / 2
-        
-        areas = (x2 - x1) * (y2 - y1)
-        _, order = scores.sort(descending=True)
-        
-        keep = []
-        while order.numel() > 0:
-            i = order[0]
-            keep.append(i)
-            
-            if order.numel() == 1:
-                break
-            
-            # 计算IoU
-            xx1 = x1[order[1:]].clamp(min=x1[i].item())
-            yy1 = y1[order[1:]].clamp(min=y1[i].item())
-            xx2 = x2[order[1:]].clamp(max=x2[i].item())
-            yy2 = y2[order[1:]].clamp(max=y2[i].item())
-            
-            inter = (xx2 - xx1).clamp(min=0) * (yy2 - yy1).clamp(min=0)
-            iou = inter / (areas[i] + areas[order[1:]] - inter)
-            
-            # 保留IoU低于阈值的框
-            mask = iou <= threshold
-            order = order[1:][mask]
-        
-        return torch.tensor(keep, dtype=torch.long, device=boxes.device)

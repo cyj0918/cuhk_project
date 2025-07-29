@@ -1,10 +1,10 @@
-# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --num-anchors 3 --grid-size 16x16 --save-path models/test_4.pth
-
+# python -m src.cuhk_project.scripts.train_detection --data-dir data/yolo_mf_dataset --batch-size 4 --epochs 10 --out-channels 16 --num-anchors 3 --grid-size 6x32 --save-path models/test_5.pth
 import argparse
 from cuhk_project.utils.logger import logger
 from cuhk_project.detection.dataset import YOLOMFDataset
 from cuhk_project.detection.model import SimpleDetectionModel
 from cuhk_project.detection.trainer import DetectionTrainer
+import torch
 
 def main():
     # 配置日志
@@ -24,58 +24,71 @@ def main():
                         help="Number of output channels in convolution layer")
     parser.add_argument("--num-anchors", type=int, default=3,
                         help="Number of anchor boxes for YOLO-style training")
-    parser.add_argument("--grid-size", type=str, default="16x16",
-                        help="Grid size for YOLO-style training (format: HxW)")
+    parser.add_argument("--grid-size", type=str, default="6x32",
+                        help="Grid size for YOLO-style training (format: height x width)")
     parser.add_argument("--save-path", type=str, default="models/detection_model.pth",
                         help="Path to save trained model")
     
     args = parser.parse_args()
     
-    # 解析网格尺寸
+    # 解析网格尺寸 (height x width)
     grid_height, grid_width = map(int, args.grid_size.split('x'))
+    grid_size = (grid_height, grid_width)  # (height, width)
+    
+    # 固定输入图像尺寸为96x512 (height, width)
+    image_size = (96, 512)  # (height, width)
     
     logger.info(f"Training configuration: "
                 f"data_dir={args.data_dir}, batch_size={args.batch_size}, "
                 f"epochs={args.epochs}, lr={args.lr}, out_channels={args.out_channels}, "
-                f"num_anchors={args.num_anchors}, grid_size=({grid_height}x{grid_width})")
-    
+                f"num_anchors={args.num_anchors}, grid_size={grid_size}, image_size={image_size}")
+
     # 创建数据集
     try:
         train_dataset = YOLOMFDataset(
-            base_dir=args.data_dir, split="train", target_size=(512, 96)
+            base_dir=args.data_dir, 
+            split="train", 
+            target_size=image_size,  # (height, width)
+            grid_size=grid_size      # (height, width)
         )
         val_dataset = YOLOMFDataset(
-            base_dir=args.data_dir, split="val", target_size=(512, 96)
+            base_dir=args.data_dir, 
+            split="val", 
+            target_size=image_size,  # (height, width)
+            grid_size=grid_size      # (height, width)
         )
         
         logger.info(f"Train dataset size: {len(train_dataset)}")
         logger.info(f"Validation dataset size: {len(val_dataset)}")
+        
     except Exception as e:
         logger.error(f"Failed to create datasets: {str(e)}")
         return
     
-    # 创建模型 - 添加num_anchors参数
+    # 创建模型
     try:
         model = SimpleDetectionModel(
             in_channels=3, 
             out_channels=args.out_channels,
             kernel_size=3,
-            num_anchors=args.num_anchors  # 添加锚框数量参数
+            num_anchors=args.num_anchors,
+            grid_size=grid_size  # 传递网格尺寸给模型
         )
         logger.info(f"Model created successfully with {args.num_anchors} anchors")
+        logger.info(f"Model output grid size: {grid_size}")
     except Exception as e:
         logger.error(f"Failed to create model: {str(e)}")
         return
     
-    # 创建训练器 - 添加网格尺寸和锚框数量
+    # 创建训练器 - 传递数据集而不是数据加载器
     try:
         trainer = DetectionTrainer(
             model=model,
-            train_dataset=train_dataset,
-            val_dataset=val_dataset,
-            grid_size=(grid_height, grid_width),  # 网格尺寸
-            num_anchors=args.num_anchors,         # 锚框数量
-            batch_size=args.batch_size,
+            train_dataset=train_dataset,  # 传递训练数据集
+            val_dataset=val_dataset,      # 传递验证数据集
+            grid_size=grid_size,
+            num_anchors=args.num_anchors,
+            batch_size=args.batch_size,    # 传递批次大小
             learning_rate=args.lr,
             num_epochs=args.epochs
         )
