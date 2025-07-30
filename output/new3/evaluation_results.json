@@ -1,0 +1,116 @@
+{
+  "evaluation_config": {
+    "model_path": "models/new3.pth",
+    "data_dir": "data/yolo_mf_dataset",
+    "split": "test",
+    "device": "cpu",
+    "conf_thresh": 0.4,
+    "iou_thresh": 0.5,
+    "grid_size": [
+      6,
+      32
+    ],
+    "target_size": [
+      96,
+      512
+    ],
+    "timestamp": "2025-07-30 14:08:07"
+  },
+  "basic_evaluation": {
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1_score": 0.0,
+    "true_positives": 0,
+    "false_positives": 2,
+    "false_negatives": 6,
+    "total_gt_boxes": 6,
+    "total_pred_boxes": 2,
+    "total_images": 5,
+    "avg_gt_boxes_per_image": 1.2,
+    "avg_pred_boxes_per_image": 0.4,
+    "conf_thresh": 0.4,
+    "iou_thresh": 0.5,
+    "sample_results": [
+      {
+        "image_id": 0,
+        "num_gt_boxes": 2,
+        "num_pred_boxes": 1,
+        "true_positives": 0,
+        "false_positives": 1,
+        "false_negatives": 2,
+        "matched_pred": [
+          false
+        ],
+        "pred_scores": [
+          0.898271381855011
+        ]
+      },
+      {
+        "image_id": 1,
+        "num_gt_boxes": 1,
+        "num_pred_boxes": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "matched_pred": [],
+        "pred_scores": []
+      },
+      {
+        "image_id": 2,
+        "num_gt_boxes": 1,
+        "num_pred_boxes": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "matched_pred": [],
+        "pred_scores": []
+      },
+      {
+        "image_id": 3,
+        "num_gt_boxes": 1,
+        "num_pred_boxes": 1,
+        "true_positives": 0,
+        "false_positives": 1,
+        "false_negatives": 1,
+        "matched_pred": [
+          false
+        ],
+        "pred_scores": [
+          0.8043439984321594
+        ]
+      },
+      {
+        "image_id": 4,
+        "num_gt_boxes": 1,
+        "num_pred_boxes": 0,
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 1,
+        "matched_pred": [],
+        "pred_scores": []
+      }
+    ],
+    "total_inference_time_ms": 335.8537489839364,
+    "avg_inference_time_ms": 67.17074979678728,
+    "median_inference_time_ms": 48.8399999885587,
+    "min_inference_time_ms": 14.101332999416627,
+    "max_inference_time_ms": 169.26370799774304,
+    "std_inference_time_ms": 54.084753270679315,
+    "fps": 14.887432446791433,
+    "avg_memory_mb": 213.83125,
+    "max_memory_mb": 271.796875,
+    "total_samples": 5
+  },
+  "benchmark": {
+    "warmup_runs": 10,
+    "benchmark_runs": 100,
+    "avg_forward_time_ms": 16.664261300174985,
+    "median_forward_time_ms": 14.015771004778799,
+    "min_forward_time_ms": 5.698334003682248,
+    "max_forward_time_ms": 56.96987500414252,
+    "std_forward_time_ms": 8.923309310840066,
+    "forward_fps": 60.00866056928064,
+    "percentile_95_ms": 34.79693960616714,
+    "percentile_99_ms": 50.4834355808271
+  }
+}

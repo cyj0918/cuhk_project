@@ -314,7 +314,8 @@ def run_detailed_profiling(model, dataset, args, device: str) -> Dict:
                 image_tensor = image.unsqueeze(0).to(device, dtype=torch.float32)
                 
                 with record_function("model_prediction"):
-                    _ = model.predict(image_tensor, conf_thresh=args.conf_thresh)
+                    # 模型現在返回三個輸出
+                    _, _, _ = model(image_tensor)
     
     # 保存分析結果
     profile_output_path = Path(args.output_dir) / "profiling_trace.json"
@@ -360,21 +361,22 @@ def benchmark_inference_speed(model, dataset, device: str, num_warmup: int = 10,
             if device == 'cuda':
                 torch.cuda.synchronize()
     
-    # 正式測試
-    times = []
-    with torch.no_grad():
-        for _ in range(num_benchmark):
-            if device == 'cuda':
-                torch.cuda.synchronize()
-            
-            start_time = time.perf_counter()
-            _ = model(sample_tensor)
-            
-            if device == 'cuda':
-                torch.cuda.synchronize()
-            
-            end_time = time.perf_counter()
-            times.append((end_time - start_time) * 1000)  # 轉換為毫秒
+        # 正式測試
+        times = []
+        with torch.no_grad():
+            for _ in range(num_benchmark):
+                if device == 'cuda':
+                    torch.cuda.synchronize()
+                
+                start_time = time.perf_counter()
+                # 模型現在返回三個輸出
+                _, _, _ = model(sample_tensor)
+                
+                if device == 'cuda':
+                    torch.cuda.synchronize()
+                
+                end_time = time.perf_counter()
+                times.append((end_time - start_time) * 1000)  # 轉換為毫秒
     
     times = np.array(times)
     

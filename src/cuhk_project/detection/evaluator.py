@@ -223,14 +223,15 @@ class DetectionEvaluator:
                 pred_boxes = np.empty((0, 4))
                 pred_scores = np.empty(0)
             
-            # 可視化
+            # 可視化 - 注意：true_boxes和pred_boxes現在都是cxcywh格式
             self.visualizer.visualize_sample(
                 image_np,
                 pred_boxes,
                 true_boxes,
                 f"eval_sample_{idx:04d}.png",
                 pred_scores=pred_scores,
-                conf_thresh=self.conf_thresh
+                conf_thresh=self.conf_thresh,
+                box_format="cxcywh"  # 明確指定框格式
             )
             
         except Exception as e:

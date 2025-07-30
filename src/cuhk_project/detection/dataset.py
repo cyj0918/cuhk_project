@@ -137,14 +137,13 @@ class YOLOMFDataset(Dataset):
             labels = []
             
             for ann in annotations:
-                # 关键修正：类别索引+1 (背景类占0索引)
                 labels.append(int(ann['class_id']) + 1)  # 原始0->1, 1->2...
                 
-                # 转换为中心坐标格式 (保持归一化)
+                # 直接使用cxcywh格式
                 boxes.append([
-                    ann['cx'],
-                    ann['cy'],
-                    ann['width'],
+                    ann['cx'], 
+                    ann['cy'], 
+                    ann['width'], 
                     ann['height']
                 ])
             
@@ -197,14 +196,19 @@ class YOLOMFDataset(Dataset):
             assert len(boxes) == len(labels), \
                 f"Boxes/Labels count mismatch: {len(boxes)} vs {len(labels)}"
                 
-            # 验证坐标范围
+            # 验证坐标范围 (cxcywh格式)
             for box in boxes:
                 cx, cy, w, h = box.tolist()
-                x1, y1 = cx - w/2, cy - h/2
-                x2, y2 = cx + w/2, cy + h/2
-                
-                if not (0 <= x1 < x2 <= 1 and 0 <= y1 < y2 <= 1):
-                    logger.warning(f"Box out of bounds: {box.tolist()}")
+                if not (0 <= cx <= 1 and 0 <= cy <= 1 and 0 < w <= 1 and 0 < h <= 1):
+                    logger.warning(f"Box out of bounds: cx={cx}, cy={cy}, w={w}, h={h}")
+                    
+                # 检查转换后的边界
+                x_min = cx - w/2
+                y_min = cy - h/2
+                x_max = cx + w/2
+                y_max = cy + h/2
+                if not (0 <= x_min < x_max <= 1 and 0 <= y_min < y_max <= 1):
+                    logger.warning(f"Box bounds invalid after conversion: {x_min},{y_min},{x_max},{y_max}")
 
     def _load_classes(self) -> List[str]:
         classes_file = self.base_dir / "classes.txt"
