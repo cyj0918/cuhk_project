@@ -1,0 +1,15 @@
+{
+  "precision": 0.0,
+  "recall": 0.0,
+  "f1_score": 0.0,
+  "true_positives": 0,
+  "false_positives": 3223,
+  "false_negatives": 45,
+  "total_gt_boxes": 45,
+  "total_pred_boxes": 3223,
+  "total_images": 30,
+  "avg_gt_boxes_per_image": 1.5,
+  "avg_pred_boxes_per_image": 107.43333333333334,
+  "conf_thresh": 0.4,
+  "iou_thresh": 0.5
+}

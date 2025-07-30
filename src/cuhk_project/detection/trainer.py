@@ -52,7 +52,7 @@ class DetectionTrainer:
             # 按面積排序錨框
             anchors = kmeans.cluster_centers_
             anchors = sorted(anchors, key=lambda x: x[0] * x[1])
-            anchors_tensor = torch.tensor(anchors, dtype=torch.float32)
+            anchors_tensor = torch.from_numpy(np.array(anchors, dtype=np.float32))
             
             logger.info(f"Computed {num_anchors} anchors from {len(all_boxes)} boxes: {anchors_tensor.tolist()}")
             return anchors_tensor
