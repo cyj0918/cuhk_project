@@ -4,7 +4,7 @@ YOLO Detection Model Evaluation Report
 
 Configuration:
   Model Path: models/new1.pth
-  Dataset: data/yolo_mf_dataset (split: val)
+  Dataset: data/yolo_mf_dataset (split: test)
   Device: cpu
   Confidence Threshold: 0.4
   IoU Threshold: 0.5
@@ -14,21 +14,21 @@ Basic Evaluation Results:
   Recall: 0.0000
   F1 Score: 0.0000
   True Positives: 0
-  False Positives: 3223
-  False Negatives: 45
-  Total Images: 30
+  False Positives: 555
+  False Negatives: 6
+  Total Images: 5
 
 Performance Statistics:
-  Average Inference Time: 18.50 ms
-  FPS: 54.0
-  Min/Max Time: 12.09/69.90 ms
-  Memory Usage: 420.6 MB (avg), 436.4 MB (max)
+  Average Inference Time: 42.12 ms
+  FPS: 23.7
+  Min/Max Time: 15.40/84.23 ms
+  Memory Usage: 366.8 MB (avg), 402.2 MB (max)
 
 Benchmark Results:
-  Forward Pass Time: 2.91 ± 0.40 ms
-  Forward FPS: 343.9
-  95th Percentile: 3.75 ms
-  99th Percentile: 4.22 ms
+  Forward Pass Time: 3.32 ± 0.76 ms
+  Forward FPS: 301.0
+  95th Percentile: 4.77 ms
+  99th Percentile: 6.19 ms
 
 ================================================================================
-Report generated at: 2025-07-30 10:41:06
+Report generated at: 2025-07-30 10:51:20
